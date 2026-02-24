@@ -58,7 +58,7 @@ export default function HomePage() {
       >
         <img
           src="/logo.png"
-          alt="Everest Maker"
+          alt="Everest Planner"
           style={{ height: 56, marginBottom: 24 }}
         />
 

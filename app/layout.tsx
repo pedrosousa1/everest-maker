@@ -3,7 +3,7 @@ import "./globals.css";
 import Providers from "./providers";
 
 export const metadata: Metadata = {
-  title: "Everest Maker — Planejamento de Casamentos",
+  title: "Everest Planner — Planejamento de Casamentos",
   description: "Planejamento de casamento completo e inteligente.",
 };
 

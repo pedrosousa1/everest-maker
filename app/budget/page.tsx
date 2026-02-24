@@ -36,6 +36,11 @@ import type {
 import { VENDOR_CATEGORIES } from "@/lib/types";
 import { useToast } from "@/components/Toast";
 import { useAlert } from "@/components/CustomAlert";
+import {
+  maskCurrency,
+  parseCurrency,
+  numberToCurrencyInput,
+} from "@/lib/masks";
 
 type Grouped = Record<string, BudgetItem[]>;
 
@@ -128,7 +133,7 @@ export default function BudgetPage() {
       weddingId: wedding?.id ?? "",
       category: finalCat,
       description: desc.trim(),
-      amount: parseFloat(amount.replace(",", ".")),
+      amount: parseCurrency(amount),
       paidAmount: 0,
       createdAt: new Date().toISOString(),
     });
@@ -189,7 +194,7 @@ export default function BudgetPage() {
 
   function handleSaveBudget(e: React.FormEvent) {
     e.preventDefault();
-    const v = parseFloat(newBudget.replace(",", "."));
+    const v = parseCurrency(newBudget);
     if (isNaN(v) || v < 0) {
       showToast("Valor inválido", "", "warning");
       return;
@@ -275,7 +280,7 @@ export default function BudgetPage() {
             </p>
             <button
               onClick={() => {
-                setNewBudget(String(totalBudget));
+                setNewBudget(numberToCurrencyInput(totalBudget));
                 setShowBudgetEdit(true);
               }}
               style={{
@@ -668,7 +673,9 @@ export default function BudgetPage() {
                             <button
                               onClick={() => {
                                 setEditingPaid(item.id);
-                                setPaidInput(String(item.paidAmount));
+                                setPaidInput(
+                                  numberToCurrencyInput(item.paidAmount),
+                                );
                               }}
                               title="Registrar valor pago"
                               style={{
@@ -748,7 +755,8 @@ export default function BudgetPage() {
                                 R$ pago:
                               </span>
                               <input
-                                type="number"
+                                type="text"
+                                inputMode="numeric"
                                 className="input-field"
                                 style={{
                                   padding: "4px 8px",
@@ -757,16 +765,15 @@ export default function BudgetPage() {
                                   flex: 1,
                                 }}
                                 value={paidInput}
-                                onChange={(e) => setPaidInput(e.target.value)}
-                                min={0}
-                                max={item.amount}
-                                step={0.01}
+                                onChange={(e) =>
+                                  setPaidInput(maskCurrency(e.target.value))
+                                }
                                 autoFocus
                                 onKeyDown={(e) => {
                                   if (e.key === "Enter")
                                     handleUpdatePaid(
                                       item,
-                                      parseFloat(paidInput) || 0,
+                                      parseCurrency(paidInput),
                                     );
                                   if (e.key === "Escape") {
                                     setEditingPaid(null);
@@ -784,7 +791,7 @@ export default function BudgetPage() {
                                 onClick={() =>
                                   handleUpdatePaid(
                                     item,
-                                    parseFloat(paidInput) || 0,
+                                    parseCurrency(paidInput),
                                   )
                                 }
                               >
@@ -917,13 +924,12 @@ export default function BudgetPage() {
               <div className="input-group">
                 <label className="input-label">Valor (R$) *</label>
                 <input
-                  type="number"
+                  type="text"
+                  inputMode="numeric"
                   className="input-field"
-                  placeholder="0,00"
+                  placeholder="R$ 0,00"
                   value={amount}
-                  onChange={(e) => setAmount(e.target.value)}
-                  min="0"
-                  step="0.01"
+                  onChange={(e) => setAmount(maskCurrency(e.target.value))}
                 />
               </div>
 
@@ -1003,12 +1009,12 @@ export default function BudgetPage() {
               <div className="input-group">
                 <label className="input-label">Orçamento total (R$)</label>
                 <input
-                  type="number"
+                  type="text"
+                  inputMode="numeric"
                   className="input-field"
+                  placeholder="R$ 0,00"
                   value={newBudget}
-                  onChange={(e) => setNewBudget(e.target.value)}
-                  min="0"
-                  step="100"
+                  onChange={(e) => setNewBudget(maskCurrency(e.target.value))}
                   autoFocus
                 />
               </div>

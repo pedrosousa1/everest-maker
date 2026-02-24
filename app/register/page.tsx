@@ -87,7 +87,7 @@ export default function RegisterPage() {
       <div className="auth-glow" />
       <div className="auth-card" style={{ maxWidth: 480 }}>
         <div className="auth-logo">
-          <img src="/logo.png" alt="Everest Maker" style={{ height: 80 }} />
+          <img src="/logo.png" alt="Everest Planner" style={{ height: 80 }} />
         </div>
 
         <h1 className="auth-title">Crie sua conta</h1>

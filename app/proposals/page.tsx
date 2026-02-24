@@ -21,6 +21,7 @@ import type { Proposal, ProposalStatus, VendorCategory } from "@/lib/types";
 import { VENDOR_CATEGORIES } from "@/lib/types";
 import { useToast } from "@/components/Toast";
 import { useAlert } from "@/components/CustomAlert";
+import { maskCurrency, parseCurrency } from "@/lib/masks";
 
 const STATUS_LABELS: Record<ProposalStatus, string> = {
   negociando: "Negociando",
@@ -109,7 +110,7 @@ export default function ProposalsPage() {
       weddingId: "",
       vendorName: vendorName.trim(),
       category: finalCat,
-      value: parseFloat(value.replace(",", ".")),
+      value: parseCurrency(value),
       status,
       notes: notes.trim() || undefined,
       createdAt: new Date().toISOString(),
@@ -537,13 +538,12 @@ export default function ProposalsPage() {
                 <div className="input-group">
                   <label className="input-label">Valor (R$) *</label>
                   <input
-                    type="number"
+                    type="text"
+                    inputMode="numeric"
                     className="input-field"
-                    placeholder="0,00"
+                    placeholder="R$ 0,00"
                     value={value}
-                    onChange={(e) => setValue(e.target.value)}
-                    min="0"
-                    step="0.01"
+                    onChange={(e) => setValue(maskCurrency(e.target.value))}
                   />
                 </div>
               </div>

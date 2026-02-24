@@ -7,6 +7,11 @@ import { useRequireAuth } from "@/lib/AuthContext";
 import { getWedding, saveWedding, generateId } from "@/lib/storage";
 import { useToast } from "@/components/Toast";
 import type { WeddingData } from "@/lib/types";
+import {
+  maskCurrency,
+  parseCurrency,
+  numberToCurrencyInput,
+} from "@/lib/masks";
 
 function formatDateInput(text: string) {
   const cleaned = text.replace(/\D/g, "");
@@ -63,7 +68,7 @@ export default function SettingsPage() {
       setWedding(w);
       setWeddingDate(w.weddingDate ? toDateInput(w.weddingDate) : "");
       setVenueName(w.venueName ?? "");
-      setTotalBudget(w.totalBudget ? String(w.totalBudget) : "");
+      setTotalBudget(w.totalBudget ? numberToCurrencyInput(w.totalBudget) : "");
     }
   }, []);
 
@@ -84,7 +89,7 @@ export default function SettingsPage() {
         coupleName: existing?.coupleName ?? "",
         weddingDate: iso ?? existing?.weddingDate ?? new Date().toISOString(),
         venueName: venueName.trim() || undefined,
-        totalBudget: totalBudget ? parseInt(totalBudget) : 0,
+        totalBudget: parseCurrency(totalBudget),
         createdAt: existing?.createdAt ?? new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       });
@@ -196,30 +201,14 @@ export default function SettingsPage() {
                 <Wallet size={13} color="var(--color-gold)" />
                 Orçamento total (R$)
               </label>
-              <div style={{ position: "relative" }}>
-                <span
-                  style={{
-                    position: "absolute",
-                    left: 16,
-                    top: "50%",
-                    transform: "translateY(-50%)",
-                    color: "var(--color-gold)",
-                    fontWeight: 600,
-                    fontSize: 14,
-                  }}
-                >
-                  R$
-                </span>
+              <div>
                 <input
-                  type="number"
-                  className="input-field"
-                  style={{ paddingLeft: 44 }}
-                  placeholder="50000"
-                  value={totalBudget}
-                  onChange={(e) =>
-                    setTotalBudget(e.target.value.replace(/\D/g, ""))
-                  }
+                  type="text"
                   inputMode="numeric"
+                  className="input-field"
+                  placeholder="R$ 0,00"
+                  value={totalBudget}
+                  onChange={(e) => setTotalBudget(maskCurrency(e.target.value))}
                 />
               </div>
             </div>

@@ -51,7 +51,7 @@ export default function LoginPage() {
       <div className="auth-glow" />
       <div className="auth-card">
         <div className="auth-logo">
-          <img src="/logo.png" alt="Everest Maker" style={{ height: 80 }} />
+          <img src="/logo.png" alt="Everest Planner" style={{ height: 80 }} />
         </div>
 
         <h1 className="auth-title">Bem-vindo de volta</h1>

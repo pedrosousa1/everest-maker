@@ -21,7 +21,7 @@ export default function WelcomePage() {
         <div style={{ marginBottom: "var(--sp-xl)" }}>
           <img
             src="/logo.png"
-            alt="Everest Maker"
+            alt="Everest Planner"
             style={{ width: 150, margin: "0 auto 20px" }}
           />
 

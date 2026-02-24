@@ -22,6 +22,7 @@ const KEYS = {
   APPOINTMENTS: "@everest:appointments",
   CHECKLIST: "@everest:checklist",
   IS_LOGGED_IN: "@everest:is_logged_in",
+  ONBOARDING_DONE: "@everest:onboarding_done",
 };
 
 function get<T>(key: string): T | null {
@@ -60,6 +61,14 @@ export function isLoggedIn(): boolean {
 }
 export function logout(): void {
   remove(KEYS.IS_LOGGED_IN);
+}
+
+// ── ONBOARDING ────────────────────────
+export function hasSeenOnboarding(): boolean {
+  return localStorage.getItem(KEYS.ONBOARDING_DONE) === "true";
+}
+export function setOnboardingDone(): void {
+  localStorage.setItem(KEYS.ONBOARDING_DONE, "true");
 }
 
 // ── WEDDING ───────────────────────────

@@ -4,9 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import {
   Users,
   Plus,
-  X,
   Phone,
-  Mail,
   Instagram,
   Camera,
   Film,
@@ -34,11 +32,22 @@ import {
   deleteVendor,
   generateId,
   formatCurrency,
+  getWedding,
+  addBudgetItem,
+  updateBudgetItem,
+  deleteBudgetItem,
+  getBudgetItems,
 } from "@/lib/storage";
 import type { Vendor, VendorCategory } from "@/lib/types";
 import { VENDOR_CATEGORIES } from "@/lib/types";
 import { useToast } from "@/components/Toast";
 import { useAlert } from "@/components/CustomAlert";
+import {
+  maskCurrency,
+  parseCurrency,
+  maskPhone,
+  numberToCurrencyInput,
+} from "@/lib/masks";
 
 const CAT_ICONS: Record<string, React.ReactNode> = {
   Fotografia: <Camera size={18} />,
@@ -63,12 +72,123 @@ const EMPTY_FORM = {
   cat: VENDOR_CATEGORIES[0] as VendorCategory,
   customCat: "",
   phone: "",
-  email: "",
   instagram: "",
-  notes: "",
   value: "",
 };
 type FState = typeof EMPTY_FORM;
+
+/* ── Formulário compartilhado como componente fora do render ── */
+function VForm({
+  f,
+  onChange,
+  onSubmit,
+  onCancel,
+  autoFocusName,
+}: {
+  f: FState;
+  onChange: (key: keyof FState, value: string) => void;
+  onSubmit: (e: React.FormEvent) => void;
+  onCancel: () => void;
+  autoFocusName?: boolean;
+}) {
+  return (
+    <form
+      onSubmit={onSubmit}
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        gap: "var(--sp-md)",
+      }}
+    >
+      <div className="input-group">
+        <label className="input-label">Nome *</label>
+        <input
+          type="text"
+          className="input-field"
+          value={f.name}
+          onChange={(e) => onChange("name", e.target.value)}
+          autoFocus={autoFocusName}
+        />
+      </div>
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "1fr 1fr",
+          gap: "var(--sp-md)",
+        }}
+      >
+        <div className="input-group">
+          <label className="input-label">Categoria</label>
+          <select
+            className="input-field"
+            value={f.cat}
+            onChange={(e) => onChange("cat", e.target.value)}
+            style={{
+              background: "var(--color-black-card)",
+              cursor: "pointer",
+            }}
+          >
+            {VENDOR_CATEGORIES.map((c) => (
+              <option key={c} value={c}>
+                {c}
+              </option>
+            ))}
+          </select>
+          {f.cat === "Outro" && (
+            <input
+              type="text"
+              className="input-field"
+              placeholder="Especifique a categoria..."
+              value={f.customCat}
+              onChange={(e) => onChange("customCat", e.target.value)}
+              style={{ marginTop: 8 }}
+            />
+          )}
+        </div>
+        <div className="input-group">
+          <label className="input-label">Valor (R$)</label>
+          <input
+            type="text"
+            inputMode="numeric"
+            className="input-field"
+            placeholder="R$ 0,00"
+            value={f.value}
+            onChange={(e) => onChange("value", maskCurrency(e.target.value))}
+          />
+        </div>
+      </div>
+      <div className="input-group">
+        <label className="input-label">Telefone</label>
+        <input
+          type="tel"
+          className="input-field"
+          placeholder="(11) 99999-9999"
+          value={f.phone}
+          onChange={(e) => onChange("phone", maskPhone(e.target.value))}
+        />
+      </div>
+      <div className="input-group">
+        <label className="input-label">Instagram</label>
+        <input
+          type="text"
+          className="input-field"
+          placeholder="@usuario"
+          value={f.instagram}
+          onChange={(e) => onChange("instagram", e.target.value)}
+        />
+      </div>
+
+      <div style={{ display: "flex", gap: "var(--sp-md)", marginTop: 4 }}>
+        <button type="button" className="btn-secondary" onClick={onCancel}>
+          Cancelar
+        </button>
+        <button type="submit" className="btn-primary">
+          Salvar
+        </button>
+      </div>
+    </form>
+  );
+}
 
 export default function VendorsPage() {
   const { loading } = useRequireAuth();
@@ -94,6 +214,13 @@ export default function VendorsPage() {
       v.category.toLowerCase().includes(search.toLowerCase()),
   );
 
+  function handleFormChange(
+    setState: React.Dispatch<React.SetStateAction<FState>>,
+  ) {
+    return (key: keyof FState, value: string) =>
+      setState((p) => ({ ...p, [key]: value }));
+  }
+
   function openDetail(v: Vendor) {
     setSelected(v);
     const knownCat = VENDOR_CATEGORIES.includes(v.category as VendorCategory);
@@ -104,21 +231,9 @@ export default function VendorsPage() {
         : ("Outro" as VendorCategory),
       customCat: knownCat ? "" : v.category,
       phone: v.phone ?? "",
-      email: v.email ?? "",
       instagram: v.instagram ?? "",
-      notes: v.notes ?? "",
-      value: v.value ? String(v.value) : "",
+      value: v.value ? numberToCurrencyInput(v.value) : "",
     });
-  }
-
-  function field(setState: React.Dispatch<React.SetStateAction<FState>>) {
-    return (key: keyof FState) =>
-      (
-        e: React.ChangeEvent<
-          HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement
-        >,
-      ) =>
-        setState((p) => ({ ...p, [key]: e.target.value }));
   }
 
   function handleUpdate(e: React.FormEvent) {
@@ -131,16 +246,51 @@ export default function VendorsPage() {
       form.cat === "Outro" && form.customCat.trim()
         ? form.customCat.trim()
         : form.cat;
-    updateVendor({
+    const parsedValue = parseCurrency(form.value) || undefined;
+    const wedding = getWedding();
+
+    const updated: Vendor = {
       ...selected,
       name: form.name.trim(),
       category: finalCat,
       phone: form.phone.trim() || undefined,
-      email: form.email.trim() || undefined,
       instagram: form.instagram.trim() || undefined,
-      notes: form.notes.trim() || undefined,
-      value: form.value ? parseFloat(form.value) : undefined,
-    });
+      value: parsedValue,
+    };
+
+    // Sincroniza com orçamento
+    if (selected.budgetItemId && parsedValue) {
+      // Tinha budget e continua com valor → atualiza
+      const budgetItems = getBudgetItems();
+      const existing = budgetItems.find((b) => b.id === selected.budgetItemId);
+      if (existing) {
+        updateBudgetItem({
+          ...existing,
+          description: updated.name,
+          category: finalCat,
+          amount: parsedValue,
+        });
+      }
+    } else if (selected.budgetItemId && !parsedValue) {
+      // Tinha budget mas removeu valor → deleta budget
+      deleteBudgetItem(selected.budgetItemId);
+      updated.budgetItemId = undefined;
+    } else if (!selected.budgetItemId && parsedValue) {
+      // Não tinha budget e agora tem valor → cria budget
+      const budgetId = generateId();
+      addBudgetItem({
+        id: budgetId,
+        weddingId: wedding?.id ?? "",
+        category: finalCat,
+        description: updated.name,
+        amount: parsedValue,
+        paidAmount: 0,
+        createdAt: new Date().toISOString(),
+      });
+      updated.budgetItemId = budgetId;
+    }
+
+    updateVendor(updated);
     setSelected(null);
     loadData();
     showToast("Salvo!", "", "success");
@@ -156,175 +306,65 @@ export default function VendorsPage() {
       addForm.cat === "Outro" && addForm.customCat.trim()
         ? addForm.customCat.trim()
         : addForm.cat;
-    addVendor({
+    const parsedValue = parseCurrency(addForm.value) || undefined;
+    const wedding = getWedding();
+
+    const vendor: Vendor = {
       id: generateId(),
-      weddingId: "",
+      weddingId: wedding?.id ?? "",
       name: addForm.name.trim(),
       category: finalCat,
       phone: addForm.phone.trim() || undefined,
-      email: addForm.email.trim() || undefined,
       instagram: addForm.instagram.trim() || undefined,
-      notes: addForm.notes.trim() || undefined,
-      value: addForm.value ? parseFloat(addForm.value) : undefined,
+      value: parsedValue,
       createdAt: new Date().toISOString(),
-    });
+    };
+
+    // Se tem valor, cria item de orçamento vinculado
+    if (parsedValue) {
+      const budgetId = generateId();
+      addBudgetItem({
+        id: budgetId,
+        weddingId: wedding?.id ?? "",
+        category: finalCat,
+        description: vendor.name,
+        amount: parsedValue,
+        paidAmount: 0,
+        createdAt: new Date().toISOString(),
+      });
+      vendor.budgetItemId = budgetId;
+    }
+
+    addVendor(vendor);
     setAddForm(EMPTY_FORM);
     setShowAdd(false);
     loadData();
-    showToast("Fornecedor adicionado!", "", "success");
+    showToast(
+      "Fornecedor adicionado!",
+      parsedValue ? "Gasto adicionado ao orçamento." : "",
+      "success",
+    );
   }
 
   function handleDelete(id: string, e?: React.MouseEvent) {
     e?.stopPropagation();
+    const vendor = vendors.find((v) => v.id === id);
     showConfirm(
       "Remover fornecedor?",
-      "Deseja remover este fornecedor?",
+      vendor?.budgetItemId
+        ? "O gasto vinculado no orçamento também será removido."
+        : "Deseja remover este fornecedor?",
       () => {
+        // Remove budget item vinculado
+        if (vendor?.budgetItemId) {
+          deleteBudgetItem(vendor.budgetItemId);
+        }
         deleteVendor(id);
         setSelected(null);
         loadData();
       },
       "Remover",
       "danger",
-    );
-  }
-
-  /* form compartilhado */
-  function VForm({
-    f,
-    upd,
-    onSubmit,
-    onCancel,
-  }: {
-    f: FState;
-    upd: ReturnType<typeof field>;
-    onSubmit: (e: React.FormEvent) => void;
-    onCancel: () => void;
-  }) {
-    return (
-      <form
-        onSubmit={onSubmit}
-        style={{
-          display: "flex",
-          flexDirection: "column",
-          gap: "var(--sp-md)",
-        }}
-      >
-        <div className="input-group">
-          <label className="input-label">Nome *</label>
-          <input
-            type="text"
-            className="input-field"
-            value={f.name}
-            onChange={upd("name")}
-            autoFocus
-          />
-        </div>
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "1fr 1fr",
-            gap: "var(--sp-md)",
-          }}
-        >
-          <div className="input-group">
-            <label className="input-label">Categoria</label>
-            <select
-              className="input-field"
-              value={f.cat}
-              onChange={upd("cat")}
-              style={{
-                background: "var(--color-black-card)",
-                cursor: "pointer",
-              }}
-            >
-              {VENDOR_CATEGORIES.map((c) => (
-                <option key={c} value={c}>
-                  {c}
-                </option>
-              ))}
-            </select>
-            {f.cat === "Outro" && (
-              <input
-                type="text"
-                className="input-field"
-                placeholder="Especifique a categoria..."
-                value={f.customCat}
-                onChange={upd("customCat")}
-                style={{ marginTop: 8 }}
-              />
-            )}
-          </div>
-          <div className="input-group">
-            <label className="input-label">Valor (R$)</label>
-            <input
-              type="number"
-              className="input-field"
-              placeholder="0,00"
-              value={f.value}
-              onChange={upd("value")}
-              min="0"
-              step="0.01"
-            />
-          </div>
-        </div>
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "1fr 1fr",
-            gap: "var(--sp-md)",
-          }}
-        >
-          <div className="input-group">
-            <label className="input-label">Telefone</label>
-            <input
-              type="tel"
-              className="input-field"
-              placeholder="(11) 99999-9999"
-              value={f.phone}
-              onChange={upd("phone")}
-            />
-          </div>
-          <div className="input-group">
-            <label className="input-label">E-mail</label>
-            <input
-              type="email"
-              className="input-field"
-              placeholder="email@..."
-              value={f.email}
-              onChange={upd("email")}
-            />
-          </div>
-        </div>
-        <div className="input-group">
-          <label className="input-label">Instagram</label>
-          <input
-            type="text"
-            className="input-field"
-            placeholder="@usuario"
-            value={f.instagram}
-            onChange={upd("instagram")}
-          />
-        </div>
-        <div className="input-group">
-          <label className="input-label">Observações</label>
-          <textarea
-            className="input-field"
-            rows={2}
-            value={f.notes}
-            onChange={upd("notes")}
-            style={{ resize: "none" }}
-          />
-        </div>
-        <div style={{ display: "flex", gap: "var(--sp-md)", marginTop: 4 }}>
-          <button type="button" className="btn-secondary" onClick={onCancel}>
-            Cancelar
-          </button>
-          <button type="submit" className="btn-primary">
-            Salvar
-          </button>
-        </div>
-      </form>
     );
   }
 
@@ -541,7 +581,6 @@ export default function VendorsPage() {
                   {v.phone && (
                     <Phone size={12} color="var(--color-gray-dark)" />
                   )}
-                  {v.email && <Mail size={12} color="var(--color-gray-dark)" />}
                   {v.instagram && (
                     <Instagram size={12} color="var(--color-gray-dark)" />
                   )}
@@ -611,7 +650,7 @@ export default function VendorsPage() {
             </div>
             <VForm
               f={form}
-              upd={field(setForm)}
+              onChange={handleFormChange(setForm)}
               onSubmit={handleUpdate}
               onCancel={() => setSelected(null)}
             />
@@ -637,12 +676,13 @@ export default function VendorsPage() {
             </div>
             <VForm
               f={addForm}
-              upd={field(setAddForm)}
+              onChange={handleFormChange(setAddForm)}
               onSubmit={handleAdd}
               onCancel={() => {
                 setAddForm(EMPTY_FORM);
                 setShowAdd(false);
               }}
+              autoFocusName
             />
           </div>
         </div>

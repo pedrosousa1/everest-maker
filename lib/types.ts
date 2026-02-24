@@ -1,5 +1,5 @@
 // ════════════════════════════════════
-// TIPOS GLOBAIS — Everest Maker
+// TIPOS GLOBAIS — Everest Planner
 // ════════════════════════════════════
 
 export type WeddingStatus = "planejando" | "confirmado" | "realizado";
@@ -52,6 +52,7 @@ export interface Vendor {
   email?: string;
   instagram?: string;
   notes?: string;
+  budgetItemId?: string;
   createdAt: string;
 }
 

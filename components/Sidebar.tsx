@@ -44,7 +44,7 @@ export default function Sidebar({ open, onClose }: SidebarProps) {
         <div className="sidebar__logo">
           <img
             src="/logo.png"
-            alt="Everest Maker"
+            alt="Everest Planner"
             style={{ height: 60, margin: "0 auto" }}
           />
         </div>
