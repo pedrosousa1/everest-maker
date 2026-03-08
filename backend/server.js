@@ -11,12 +11,30 @@ const app = express();
 const PORT = process.env.PORT || 3001;
 
 // ── Middlewares globais ────────────────
+const ALLOWED_ORIGINS = [
+  "http://localhost:3000",
+  "http://127.0.0.1:3000",
+  // Aceita qualquer subdomínio da Vercel
+  /^https:\/\/.*\.vercel\.app$/,
+  // Aceita domínio custom configurado por variável de ambiente
+  ...(process.env.ALLOWED_ORIGIN ? [process.env.ALLOWED_ORIGIN] : []),
+];
+
 app.use(
   cors({
-    origin: ["http://localhost:3000", "http://127.0.0.1:3000"],
+    origin: (origin, callback) => {
+      // Permite requisições sem origin (ex: Postman, curl, mobile)
+      if (!origin) return callback(null, true);
+      const allowed = ALLOWED_ORIGINS.some((o) =>
+        typeof o === "string" ? o === origin : o.test(origin),
+      );
+      if (allowed) return callback(null, true);
+      callback(new Error(`CORS: origem nao permitida: ${origin}`));
+    },
     credentials: true,
   }),
 );
+
 app.use(express.json());
 
 // ── Health Check ──────────────────────

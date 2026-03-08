@@ -25,6 +25,10 @@ function toFrontend(p) {
     status: p.status,
     notes: p.notes || undefined,
     budgetItemId: p.budget_item_id || undefined,
+    ratingPrice: p.rating_price ?? undefined,
+    ratingTrust: p.rating_trust ?? undefined,
+    ratingQuality: p.rating_quality ?? undefined,
+    ratingService: p.rating_service ?? undefined,
     createdAt: p.created_at,
   };
 }
@@ -58,6 +62,10 @@ router.post("/", async (req, res) => {
       status,
       notes,
       budgetItemId,
+      ratingPrice,
+      ratingTrust,
+      ratingQuality,
+      ratingService,
     } = req.body;
     if (!vendorName || value == null)
       return res
@@ -67,7 +75,10 @@ router.post("/", async (req, res) => {
     const id = uuidv4();
     const now = new Date().toISOString();
     await run(
-      "INSERT INTO proposals (id, wedding_id, vendor_name, vendor_id, category, value, status, notes, budget_item_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+      `INSERT INTO proposals (
+        id, wedding_id, vendor_name, vendor_id, category, value, 
+        status, notes, budget_item_id, rating_price, rating_trust, rating_quality, rating_service, created_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         id,
         weddingId,
@@ -78,6 +89,10 @@ router.post("/", async (req, res) => {
         status || "negociando",
         notes || null,
         budgetItemId || null,
+        ratingPrice ?? null,
+        ratingTrust ?? null,
+        ratingQuality ?? null,
+        ratingService ?? null,
         now,
       ],
     );
@@ -112,9 +127,17 @@ router.put("/:id", async (req, res) => {
       status,
       notes,
       budgetItemId,
+      ratingPrice,
+      ratingTrust,
+      ratingQuality,
+      ratingService,
     } = req.body;
     await run(
-      "UPDATE proposals SET vendor_name = ?, vendor_id = ?, category = ?, value = ?, status = ?, notes = ?, budget_item_id = ? WHERE id = ?",
+      `UPDATE proposals SET 
+        vendor_name = ?, vendor_id = ?, category = ?, value = ?, 
+        status = ?, notes = ?, budget_item_id = ?,
+        rating_price = ?, rating_trust = ?, rating_quality = ?, rating_service = ? 
+      WHERE id = ?`,
       [
         vendorName ?? proposal.vendor_name,
         vendorId !== undefined ? vendorId : proposal.vendor_id,
@@ -123,6 +146,10 @@ router.put("/:id", async (req, res) => {
         status ?? proposal.status,
         notes !== undefined ? notes : proposal.notes,
         budgetItemId !== undefined ? budgetItemId : proposal.budget_item_id,
+        ratingPrice !== undefined ? ratingPrice : proposal.rating_price,
+        ratingTrust !== undefined ? ratingTrust : proposal.rating_trust,
+        ratingQuality !== undefined ? ratingQuality : proposal.rating_quality,
+        ratingService !== undefined ? ratingService : proposal.rating_service,
         req.params.id,
       ],
     );

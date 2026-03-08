@@ -21,8 +21,6 @@ import {
   Package,
   FileText,
   Trash2,
-  Star,
-  TrendingUp,
 } from "lucide-react";
 import Link from "next/link";
 import AppShell from "@/components/AppShell";
@@ -60,315 +58,6 @@ const CAT_ICONS: Record<string, React.ReactNode> = {
   Outro: <Package size={18} />,
 };
 
-// ── Rating fields ─────────────────────────────────────────
-const RATING_FIELDS: { key: keyof RatingState; label: string; icon: string }[] =
-  [
-    { key: "ratingPrice", label: "Preço", icon: "💰" },
-    { key: "ratingTrust", label: "Confiança", icon: "🤝" },
-    { key: "ratingQuality", label: "Qualidade", icon: "⭐" },
-    { key: "ratingService", label: "Atendimento", icon: "💬" },
-  ];
-
-interface RatingState {
-  ratingPrice?: number;
-  ratingTrust?: number;
-  ratingQuality?: number;
-  ratingService?: number;
-}
-
-// ── Termômetro score ──────────────────────────────────────
-function calcScore(r: RatingState): number | null {
-  const vals = [
-    r.ratingPrice,
-    r.ratingTrust,
-    r.ratingQuality,
-    r.ratingService,
-  ].filter((v): v is number => v !== undefined && v !== null);
-  if (vals.length === 0) return null;
-  return Math.round((vals.reduce((a, b) => a + b, 0) / vals.length) * 10) / 10;
-}
-
-function scoreColor(score: number): string {
-  if (score >= 8) return "#4ade80";
-  if (score >= 6) return "#fbbf24";
-  if (score >= 4) return "#f97316";
-  return "#f87171";
-}
-
-function scoreLabel(score: number): string {
-  if (score >= 8.5) return "Excelente";
-  if (score >= 7) return "Muito bom";
-  if (score >= 5.5) return "Razoável";
-  if (score >= 4) return "Abaixo do esperado";
-  return "Insatisfatório";
-}
-
-// ── Componente de avaliação por slider ───────────────────
-function RatingSlider({
-  label,
-  icon,
-  value,
-  onChange,
-}: {
-  label: string;
-  icon: string;
-  value: number | undefined;
-  onChange: (v: number) => void;
-}) {
-  const v = value ?? 0;
-  const filled = v > 0;
-  const color = filled ? scoreColor(v) : "var(--color-gray-dark)";
-
-  return (
-    <div style={{ marginBottom: 18 }}>
-      {/* Label + valor */}
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-          marginBottom: 8,
-        }}
-      >
-        <span
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 6,
-            fontSize: 13,
-            color: "var(--color-gray-light)",
-            fontWeight: 500,
-          }}
-        >
-          <span style={{ fontSize: 15 }}>{icon}</span>
-          {label}
-        </span>
-        <span
-          style={{
-            fontSize: 14,
-            fontWeight: 700,
-            color: filled ? color : "var(--color-gray-dark)",
-            minWidth: 28,
-            textAlign: "right",
-            transition: "color 0.2s",
-          }}
-        >
-          {filled ? v : "—"}
-        </span>
-      </div>
-
-      {/* Track */}
-      <div
-        style={{
-          position: "relative",
-          height: 8,
-          borderRadius: 8,
-          background: "rgba(255,255,255,0.06)",
-        }}
-      >
-        {/* Preenchido */}
-        <div
-          style={{
-            position: "absolute",
-            left: 0,
-            top: 0,
-            height: "100%",
-            width: `${v * 10}%`,
-            borderRadius: 8,
-            background: filled
-              ? `linear-gradient(90deg, ${color}88, ${color})`
-              : "transparent",
-            transition: "width 0.25s ease, background 0.25s ease",
-          }}
-        />
-
-        {/* Input range invisível por cima */}
-        <input
-          type="range"
-          min={0}
-          max={10}
-          step={1}
-          value={v}
-          onChange={(e) => onChange(Number(e.target.value))}
-          style={{
-            position: "absolute",
-            inset: 0,
-            width: "100%",
-            height: "100%",
-            opacity: 0,
-            cursor: "pointer",
-            margin: 0,
-          }}
-        />
-      </div>
-
-      {/* Pontos de referência */}
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          marginTop: 4,
-        }}
-      >
-        {[0, 2, 4, 6, 8, 10].map((n) => (
-          <span
-            key={n}
-            style={{
-              fontSize: 9,
-              color: "var(--color-gray-dark)",
-              lineHeight: 1,
-            }}
-          >
-            {n}
-          </span>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-// ── Termômetro de decisão ─────────────────────────────────
-function DecisionThermometer({ score }: { score: number | null }) {
-  if (score === null) {
-    return (
-      <div
-        style={{
-          padding: "14px 18px",
-          borderRadius: 12,
-          background: "rgba(255,255,255,0.03)",
-          border: "1px dashed rgba(255,255,255,0.08)",
-          textAlign: "center",
-          color: "var(--color-gray-dark)",
-          fontSize: 12,
-        }}
-      >
-        Avalie os critérios acima para ver o termômetro de decisão
-      </div>
-    );
-  }
-
-  const color = scoreColor(score);
-  const pct = (score / 10) * 100;
-
-  return (
-    <div
-      style={{
-        padding: "16px 18px",
-        borderRadius: 14,
-        background: `linear-gradient(135deg, ${color}0a, ${color}18)`,
-        border: `1px solid ${color}33`,
-        position: "relative",
-        overflow: "hidden",
-      }}
-    >
-      {/* Brilho decorativo */}
-      <div
-        style={{
-          position: "absolute",
-          top: -20,
-          right: -20,
-          width: 80,
-          height: 80,
-          borderRadius: "50%",
-          background: `radial-gradient(circle, ${color}20, transparent 70%)`,
-          pointerEvents: "none",
-        }}
-      />
-
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          marginBottom: 12,
-        }}
-      >
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <TrendingUp size={16} color={color} />
-          <span
-            style={{
-              fontSize: 12,
-              fontWeight: 600,
-              color,
-              letterSpacing: 0.5,
-              textTransform: "uppercase",
-            }}
-          >
-            Termômetro de decisão
-          </span>
-        </div>
-        <div style={{ display: "flex", alignItems: "baseline", gap: 3 }}>
-          <span style={{ fontSize: 28, fontWeight: 800, color, lineHeight: 1 }}>
-            {score}
-          </span>
-          <span style={{ fontSize: 12, color: `${color}99`, fontWeight: 600 }}>
-            /10
-          </span>
-        </div>
-      </div>
-
-      {/* Barra de progresso */}
-      <div
-        style={{
-          height: 10,
-          borderRadius: 10,
-          background: "rgba(255,255,255,0.06)",
-          marginBottom: 10,
-          overflow: "hidden",
-        }}
-      >
-        <div
-          style={{
-            height: "100%",
-            borderRadius: 10,
-            width: `${pct}%`,
-            background: `linear-gradient(90deg, ${color}80, ${color})`,
-            transition: "width 0.5s cubic-bezier(0.34, 1.56, 0.64, 1)",
-            boxShadow: `0 0 12px ${color}60`,
-          }}
-        />
-      </div>
-
-      {/* Rótulo */}
-      <p style={{ fontSize: 14, fontWeight: 700, color, margin: 0 }}>
-        {scoreLabel(score)}
-      </p>
-      <p
-        style={{
-          fontSize: 11.5,
-          color: "rgba(255,255,255,0.4)",
-          margin: "3px 0 0",
-        }}
-      >
-        Média das avaliações preenchidas
-      </p>
-    </div>
-  );
-}
-
-// ── Mini score badge (nos cards da lista) ─────────────────
-function ScoreBadge({ vendor }: { vendor: ApiVendor }) {
-  const score = calcScore(vendor);
-  if (score === null) return null;
-  const color = scoreColor(score);
-  return (
-    <div
-      style={{
-        display: "flex",
-        alignItems: "center",
-        gap: 4,
-        padding: "3px 8px",
-        borderRadius: 20,
-        background: `${color}18`,
-        border: `1px solid ${color}44`,
-      }}
-    >
-      <Star size={10} fill={color} color={color} />
-      <span style={{ fontSize: 11, fontWeight: 700, color }}>{score}</span>
-    </div>
-  );
-}
-
 // ── Form state ────────────────────────────────────────────
 const EMPTY_FORM = {
   name: "",
@@ -377,15 +66,9 @@ const EMPTY_FORM = {
   phone: "",
   instagram: "",
   value: "",
+  notes: "",
 };
 type FState = typeof EMPTY_FORM;
-
-const EMPTY_RATING: RatingState = {
-  ratingPrice: undefined,
-  ratingTrust: undefined,
-  ratingQuality: undefined,
-  ratingService: undefined,
-};
 
 // ── Formulário básico ─────────────────────────────────────
 function VForm({
@@ -394,19 +77,13 @@ function VForm({
   onSubmit,
   onCancel,
   autoFocusName,
-  rating,
-  onRatingChange,
 }: {
   f: FState;
   onChange: (key: keyof FState, value: string) => void;
   onSubmit: (e: React.FormEvent) => void;
   onCancel: () => void;
   autoFocusName?: boolean;
-  rating: RatingState;
-  onRatingChange: (key: keyof RatingState, value: number) => void;
 }) {
-  const score = calcScore(rating);
-
   return (
     <form
       onSubmit={onSubmit}
@@ -501,77 +178,17 @@ function VForm({
         </div>
       </div>
 
-      {/* ════ SEÇÃO DE AVALIAÇÃO ════ */}
-      <div
-        style={{
-          marginTop: 4,
-          padding: "20px 20px 4px",
-          borderRadius: 14,
-          background: "rgba(255,255,255,0.025)",
-          border: "1px solid rgba(255,255,255,0.06)",
-        }}
-      >
-        {/* Cabeçalho */}
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 8,
-            marginBottom: 20,
-          }}
-        >
-          <div
-            style={{
-              width: 28,
-              height: 28,
-              borderRadius: 8,
-              background: "rgba(198,167,94,0.12)",
-              border: "1px solid rgba(198,167,94,0.2)",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-            }}
-          >
-            <Star size={13} color="var(--color-gold)" />
-          </div>
-          <div>
-            <p
-              style={{
-                fontSize: 13,
-                fontWeight: 700,
-                color: "var(--color-white)",
-                margin: 0,
-              }}
-            >
-              Avaliação do fornecedor
-            </p>
-            <p
-              style={{
-                fontSize: 11,
-                color: "var(--color-gray-dark)",
-                margin: 0,
-              }}
-            >
-              Deslize para avaliar de 0 a 10
-            </p>
-          </div>
-        </div>
-
-        {/* Sliders */}
-        {RATING_FIELDS.map((f) => (
-          <RatingSlider
-            key={f.key}
-            label={f.label}
-            icon={f.icon}
-            value={rating[f.key]}
-            onChange={(v) => onRatingChange(f.key, v)}
-          />
-        ))}
-
-        {/* Termômetro */}
-        <div style={{ marginBottom: 16 }}>
-          <DecisionThermometer score={score} />
-        </div>
+      {/* Observações */}
+      <div className="input-group">
+        <label className="input-label">Observações</label>
+        <textarea
+          className="input-field"
+          placeholder="Ex: Pagamento parcelado em 3x..."
+          value={f.notes}
+          onChange={(e) => onChange("notes", e.target.value)}
+          rows={3}
+          style={{ resize: "none" }}
+        />
       </div>
 
       {/* Ações */}
@@ -601,8 +218,6 @@ export default function VendorsPage() {
   const [search, setSearch] = useState("");
   const [form, setForm] = useState<FState>(EMPTY_FORM);
   const [addForm, setAddForm] = useState<FState>(EMPTY_FORM);
-  const [rating, setRating] = useState<RatingState>(EMPTY_RATING);
-  const [addRating, setAddRating] = useState<RatingState>(EMPTY_RATING);
 
   const loadData = useCallback(async () => {
     try {
@@ -624,29 +239,11 @@ export default function VendorsPage() {
       v.category.toLowerCase().includes(search.toLowerCase()),
   );
 
-  // Média geral de todos fornecedores avaliados
-  const evaluated = vendors.filter((v) => calcScore(v) !== null);
-  const overallAvg =
-    evaluated.length > 0
-      ? Math.round(
-          (evaluated.reduce((s, v) => s + (calcScore(v) ?? 0), 0) /
-            evaluated.length) *
-            10,
-        ) / 10
-      : null;
-
   function handleFormChange(
     setState: React.Dispatch<React.SetStateAction<FState>>,
   ) {
     return (key: keyof FState, value: string) =>
       setState((p) => ({ ...p, [key]: value }));
-  }
-
-  function handleRatingChange(
-    setState: React.Dispatch<React.SetStateAction<RatingState>>,
-  ) {
-    return (key: keyof RatingState, value: number) =>
-      setState((p) => ({ ...p, [key]: value === 0 ? undefined : value }));
   }
 
   function openDetail(v: ApiVendor) {
@@ -661,12 +258,7 @@ export default function VendorsPage() {
       phone: v.phone ?? "",
       instagram: v.instagram ?? "",
       value: v.value ? numberToCurrencyInput(v.value) : "",
-    });
-    setRating({
-      ratingPrice: v.ratingPrice,
-      ratingTrust: v.ratingTrust,
-      ratingQuality: v.ratingQuality,
-      ratingService: v.ratingService,
+      notes: v.notes ?? "",
     });
   }
 
@@ -689,19 +281,6 @@ export default function VendorsPage() {
           category: finalCat,
           amount: parsedValue,
         });
-      } else if (selected.budgetItemId && !parsedValue) {
-        await budgetApi.delete(selected.budgetItemId);
-      }
-
-      let budgetItemId = selected.budgetItemId;
-      if (!selected.budgetItemId && parsedValue) {
-        const bi = await budgetApi.create({
-          category: finalCat,
-          description: form.name.trim(),
-          amount: parsedValue,
-          paidAmount: 0,
-        });
-        budgetItemId = bi.id;
       }
 
       await vendorsApi.update(selected.id, {
@@ -710,8 +289,7 @@ export default function VendorsPage() {
         phone: form.phone.trim() || undefined,
         instagram: form.instagram.trim() || undefined,
         value: parsedValue,
-        budgetItemId,
-        ...rating,
+        notes: form.notes.trim() || undefined,
       });
       setSelected(null);
       loadData();
@@ -754,18 +332,13 @@ export default function VendorsPage() {
         phone: addForm.phone.trim() || undefined,
         instagram: addForm.instagram.trim() || undefined,
         value: parsedValue,
+        notes: addForm.notes.trim() || undefined,
         budgetItemId,
-        ...addRating,
       });
       setAddForm(EMPTY_FORM);
-      setAddRating(EMPTY_RATING);
       setShowAdd(false);
       loadData();
-      showToast(
-        "Fornecedor adicionado!",
-        parsedValue ? "Gasto adicionado ao orçamento." : "",
-        "success",
-      );
+      showToast("Fornecedor adicionado!", "", "success");
     } catch (err: unknown) {
       showToast(
         "Erro",
@@ -798,296 +371,111 @@ export default function VendorsPage() {
     <AppShell
       title="Fornecedores"
       actions={
-        <button
-          className="btn-primary"
-          style={{
-            padding: "10px 18px",
-            fontSize: 13,
-            width: "auto",
-            display: "flex",
-            alignItems: "center",
-            gap: 6,
-          }}
-          onClick={() => setShowAdd(true)}
-        >
-          <Plus size={15} /> Adicionar
-        </button>
+        <div style={{ display: "flex", gap: 10 }}>
+          <Link
+            href="/proposals"
+            className="btn-secondary"
+            style={{ padding: "8px 14px", fontSize: 13, width: "auto" }}
+          >
+            Ver Propostas
+          </Link>
+          <button
+            className="btn-primary"
+            style={{
+              padding: "10px 18px",
+              fontSize: 13,
+              width: "auto",
+              display: "flex",
+              alignItems: "center",
+              gap: 6,
+            }}
+            onClick={() => setShowAdd(true)}
+          >
+            <Plus size={15} /> Adicionar
+          </button>
+        </div>
       }
     >
-      {/* Busca */}
-      <div style={{ marginBottom: "var(--sp-md)", position: "relative" }}>
+      <div
+        className="input-group"
+        style={{ marginBottom: "var(--sp-lg)", marginTop: "var(--sp-sm)" }}
+      >
         <input
           type="text"
           className="input-field"
-          placeholder="Buscar por nome ou categoria..."
+          placeholder="Buscar fornecedores ou categorias..."
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          style={{ paddingLeft: 40 }}
-        />
-        <Users
-          size={15}
-          color="var(--color-gray-dark)"
-          style={{
-            position: "absolute",
-            left: 14,
-            top: "50%",
-            transform: "translateY(-50%)",
-            pointerEvents: "none",
-          }}
+          style={{ background: "var(--color-black-card)" }}
         />
       </div>
 
-      {/* Stats */}
-      <div
-        style={{
-          display: "flex",
-          gap: "var(--sp-sm)",
-          marginBottom: "var(--sp-xl)",
-          flexWrap: "wrap",
-        }}
-      >
-        <span className="badge badge--gold">Total: {vendors.length}</span>
-        <span className="badge badge--gray">
-          Categorias: {new Set(vendors.map((v) => v.category)).size}
-        </span>
-        {overallAvg !== null && (
-          <span
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 5,
-              padding: "4px 10px",
-              borderRadius: 20,
-              fontSize: 12,
-              fontWeight: 700,
-              background: `${scoreColor(overallAvg)}18`,
-              border: `1px solid ${scoreColor(overallAvg)}44`,
-              color: scoreColor(overallAvg),
-            }}
-          >
-            <Star
-              size={11}
-              fill={scoreColor(overallAvg)}
-              color={scoreColor(overallAvg)}
-            />
-            Média: {overallAvg}
-          </span>
-        )}
-      </div>
-
-      {/* Lista */}
-      {filtered.length === 0 ? (
+      {vendors.length === 0 && search === "" ? (
         <div className="empty-state">
           <div className="empty-state__icon">
             <Users size={28} />
           </div>
-          <p className="empty-state__title">
-            {search ? "Nenhum resultado" : "Nenhum fornecedor cadastrado"}
-          </p>
+          <p className="empty-state__title">Nenhum fornecedor cadastrado</p>
           <p className="empty-state__text">
-            {search
-              ? `Sem resultados para "${search}"`
-              : "Adicione manualmente ou feche uma proposta"}
+            Registre os fornecedores contratados para o seu casamento e tenha
+            todos os contatos em um só lugar.
           </p>
-          {!search && (
-            <div
-              style={{
-                display: "flex",
-                gap: "var(--sp-md)",
-                marginTop: "var(--sp-lg)",
-                justifyContent: "center",
-                flexWrap: "wrap",
-              }}
-            >
-              <button
-                className="btn-primary"
-                style={{
-                  maxWidth: 180,
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 6,
-                  justifyContent: "center",
-                }}
-                onClick={() => setShowAdd(true)}
-              >
-                <Plus size={14} /> Adicionar
-              </button>
-              <Link
-                href="/proposals"
-                className="btn-secondary"
-                style={{
-                  maxWidth: 180,
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 6,
-                  justifyContent: "center",
-                  textDecoration: "none",
-                }}
-              >
-                <FileText size={14} /> Propostas
-              </Link>
-            </div>
-          )}
+          <button
+            className="btn-primary"
+            style={{ maxWidth: 220, marginTop: "var(--sp-md)" }}
+            onClick={() => setShowAdd(true)}
+          >
+            Adicionar fornecedor
+          </button>
+        </div>
+      ) : filtered.length === 0 ? (
+        <div className="empty-state" style={{ padding: "var(--sp-xl) 0" }}>
+          <p className="empty-state__title">Nenhum resultado</p>
+          <p className="empty-state__text">
+            Não encontramos fornecedores com "{search}"
+          </p>
         </div>
       ) : (
         <div
           style={{
-            display: "flex",
-            flexDirection: "column",
-            gap: "var(--sp-sm)",
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))",
+            gap: "var(--sp-md)",
           }}
         >
           {filtered.map((v) => (
             <div
               key={v.id}
-              onClick={() => openDetail(v)}
+              className="card"
               style={{
-                display: "flex",
-                alignItems: "center",
-                gap: "var(--sp-md)",
-                background: "var(--color-black-card)",
-                border: "1px solid var(--color-black-border)",
-                borderRadius: "var(--r-lg)",
-                padding: "var(--sp-md)",
                 cursor: "pointer",
-                transition: "border-color 0.15s, box-shadow 0.15s",
-                color: "var(--color-white)",
+                transition: "border-color 0.15s, transform 0.15s",
               }}
+              onClick={() => openDetail(v)}
               onMouseOver={(e) => {
                 e.currentTarget.style.borderColor = "var(--color-gold-border)";
-                e.currentTarget.style.boxShadow =
-                  "0 4px 20px rgba(198,167,94,0.08)";
+                e.currentTarget.style.transform = "translateY(-2px)";
               }}
               onMouseOut={(e) => {
                 e.currentTarget.style.borderColor = "var(--color-black-border)";
-                e.currentTarget.style.boxShadow = "none";
+                e.currentTarget.style.transform = "none";
               }}
             >
-              {/* Ícone */}
-              <div
-                style={{
-                  width: 42,
-                  height: 42,
-                  borderRadius: "var(--r-md)",
-                  flexShrink: 0,
-                  background: "var(--color-gold-muted)",
-                  border: "1px solid var(--color-gold-border)",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  color: "var(--color-gold)",
-                }}
-              >
-                {CAT_ICONS[v.category] ?? <Package size={18} />}
-              </div>
-
-              {/* Info */}
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <p
-                  style={{
-                    fontSize: 15,
-                    fontWeight: 600,
-                    overflow: "hidden",
-                    textOverflow: "ellipsis",
-                    whiteSpace: "nowrap",
-                    marginBottom: 5,
-                    color: "var(--color-white)",
-                  }}
-                >
-                  {v.name}
-                </p>
-                <div
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 8,
-                    flexWrap: "wrap",
-                  }}
-                >
-                  <span className="badge badge--gray">{v.category}</span>
-                  {v.value && (
-                    <span
-                      style={{
-                        fontSize: 12,
-                        fontWeight: 700,
-                        color: "var(--color-gold)",
-                      }}
-                    >
-                      {formatCurrency(v.value)}
-                    </span>
-                  )}
-                  {/* Score badge */}
-                  <ScoreBadge vendor={v} />
-                </div>
-              </div>
-
-              {/* Ações */}
               <div
                 style={{
                   display: "flex",
-                  alignItems: "center",
-                  gap: 8,
-                  flexShrink: 0,
+                  gap: 12,
+                  alignItems: "flex-start",
+                  marginBottom: 12,
                 }}
               >
-                <div style={{ display: "flex", gap: 5 }}>
-                  {v.phone && (
-                    <Phone size={12} color="var(--color-gray-dark)" />
-                  )}
-                  {v.instagram && (
-                    <Instagram size={12} color="var(--color-gray-dark)" />
-                  )}
-                </div>
-                <button
-                  onClick={(e) => handleDelete(v.id, e)}
-                  style={{
-                    background: "none",
-                    border: "none",
-                    cursor: "pointer",
-                    display: "flex",
-                    padding: 4,
-                    borderRadius: 4,
-                    color: "var(--color-gray-dark)",
-                    transition: "color 0.15s",
-                  }}
-                  onMouseOver={(e) =>
-                    (e.currentTarget.style.color = "var(--color-danger)")
-                  }
-                  onMouseOut={(e) =>
-                    (e.currentTarget.style.color = "var(--color-gray-dark)")
-                  }
-                  title="Remover"
-                >
-                  <Trash2 size={15} />
-                </button>
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-
-      {/* ── MODAL EDIÇÃO ── */}
-      {selected && (
-        <div className="modal-overlay" onClick={() => setSelected(null)}>
-          <div
-            className="modal-box"
-            onClick={(e) => e.stopPropagation()}
-            style={{
-              maxHeight: "90vh",
-              overflowY: "auto",
-              maxWidth: 520,
-              width: "95vw",
-            }}
-          >
-            <div className="modal-header">
-              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                 <div
                   style={{
-                    width: 32,
-                    height: 32,
-                    borderRadius: 8,
-                    background: "var(--color-gold-muted)",
-                    border: "1px solid var(--color-gold-border)",
+                    width: 40,
+                    height: 40,
+                    borderRadius: 10,
+                    background: "rgba(198,167,94,0.08)",
+                    border: "1px solid rgba(198,167,94,0.15)",
                     display: "flex",
                     alignItems: "center",
                     justifyContent: "center",
@@ -1095,12 +483,117 @@ export default function VendorsPage() {
                     flexShrink: 0,
                   }}
                 >
-                  {CAT_ICONS[selected.category] ?? <Package size={15} />}
+                  {CAT_ICONS[v.category] || <Package size={18} />}
                 </div>
-                <h2 className="modal-title" style={{ fontSize: 16 }}>
-                  {selected.name}
-                </h2>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <p
+                    style={{
+                      fontSize: 16,
+                      fontWeight: 600,
+                      color: "var(--color-white)",
+                      whiteSpace: "nowrap",
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                      marginBottom: 2,
+                    }}
+                  >
+                    {v.name}
+                  </p>
+                  <p
+                    style={{
+                      fontSize: 12,
+                      color: "var(--color-gray)",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 6,
+                    }}
+                  >
+                    <span>{v.category}</span>
+                  </p>
+                </div>
               </div>
+
+              {v.value && (
+                <p
+                  style={{
+                    fontSize: 20,
+                    fontWeight: 700,
+                    color: "var(--color-white)",
+                    marginBottom: 12,
+                    letterSpacing: -0.5,
+                  }}
+                >
+                  {formatCurrency(v.value)}
+                </p>
+              )}
+
+              <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                {v.phone && (
+                  <span
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 4,
+                      fontSize: 11,
+                      color: "var(--color-gray)",
+                      background: "rgba(255,255,255,0.03)",
+                      padding: "4px 8px",
+                      borderRadius: 6,
+                      border: "1px solid rgba(255,255,255,0.05)",
+                    }}
+                  >
+                    <Phone size={11} /> {v.phone}
+                  </span>
+                )}
+                {v.instagram && (
+                  <span
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 4,
+                      fontSize: 11,
+                      color: "var(--color-gray)",
+                      background: "rgba(255,255,255,0.03)",
+                      padding: "4px 8px",
+                      borderRadius: 6,
+                      border: "1px solid rgba(255,255,255,0.05)",
+                    }}
+                  >
+                    <Instagram size={11} /> {v.instagram}
+                  </span>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* ── MODALS ── */}
+      {showAdd && (
+        <div className="modal-overlay" onClick={() => setShowAdd(false)}>
+          <div className="modal-box" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h2 className="modal-title">Novo Fornecedor</h2>
+              <button className="modal-close" onClick={() => setShowAdd(false)}>
+                ✕
+              </button>
+            </div>
+            <VForm
+              f={addForm}
+              onChange={handleFormChange(setAddForm)}
+              onSubmit={handleAdd}
+              onCancel={() => setShowAdd(false)}
+              autoFocusName
+            />
+          </div>
+        </div>
+      )}
+
+      {selected && (
+        <div className="modal-overlay" onClick={() => setSelected(null)}>
+          <div className="modal-box" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h2 className="modal-title">Editar Fornecedor</h2>
               <button className="modal-close" onClick={() => setSelected(null)}>
                 ✕
               </button>
@@ -1110,52 +603,18 @@ export default function VendorsPage() {
               onChange={handleFormChange(setForm)}
               onSubmit={handleUpdate}
               onCancel={() => setSelected(null)}
-              rating={rating}
-              onRatingChange={handleRatingChange(setRating)}
             />
-          </div>
-        </div>
-      )}
-
-      {/* ── MODAL ADICIONAR ── */}
-      {showAdd && (
-        <div className="modal-overlay" onClick={() => setShowAdd(false)}>
-          <div
-            className="modal-box"
-            onClick={(e) => e.stopPropagation()}
-            style={{
-              maxHeight: "90vh",
-              overflowY: "auto",
-              maxWidth: 520,
-              width: "95vw",
-            }}
-          >
-            <div className="modal-header">
-              <h2 className="modal-title">Novo fornecedor</h2>
-              <button
-                className="modal-close"
-                onClick={() => {
-                  setAddForm(EMPTY_FORM);
-                  setAddRating(EMPTY_RATING);
-                  setShowAdd(false);
-                }}
-              >
-                ✕
-              </button>
-            </div>
-            <VForm
-              f={addForm}
-              onChange={handleFormChange(setAddForm)}
-              onSubmit={handleAdd}
-              onCancel={() => {
-                setAddForm(EMPTY_FORM);
-                setAddRating(EMPTY_RATING);
-                setShowAdd(false);
+            <button
+              className="btn-secondary"
+              style={{
+                marginTop: "var(--sp-xl)",
+                color: "var(--color-danger)",
+                borderColor: "rgba(239, 68, 68, 0.2)",
               }}
-              autoFocusName
-              rating={addRating}
-              onRatingChange={handleRatingChange(setAddRating)}
-            />
+              onClick={() => handleDelete(selected.id)}
+            >
+              Remover este fornecedor
+            </button>
           </div>
         </div>
       )}

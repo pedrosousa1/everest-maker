@@ -158,11 +158,6 @@ export interface ApiVendor {
   instagram?: string;
   notes?: string;
   budgetItemId?: string;
-  // Avaliações (1-10)
-  ratingPrice?: number;
-  ratingTrust?: number;
-  ratingQuality?: number;
-  ratingService?: number;
   createdAt: string;
 }
 
@@ -189,6 +184,10 @@ export interface ApiProposal {
   status: "negociando" | "fechado" | "recusado";
   notes?: string;
   budgetItemId?: string;
+  ratingPrice?: number;
+  ratingTrust?: number;
+  ratingQuality?: number;
+  ratingService?: number;
   createdAt: string;
 }
 
