@@ -19,14 +19,9 @@ import {
 } from "lucide-react";
 import AppShell from "@/components/AppShell";
 import { useRequireAuth } from "@/lib/AuthContext";
-import {
-  getAppointments,
-  addAppointment,
-  deleteAppointment,
-  updateAppointment,
-  generateId,
-} from "@/lib/storage";
-import type { Appointment, AppointmentType } from "@/lib/types";
+import { appointmentsApi } from "@/lib/api";
+import type { ApiAppointment } from "@/lib/api";
+import type { AppointmentType } from "@/lib/types";
 import { APPOINTMENT_TYPES } from "@/lib/types";
 import { useToast } from "@/components/Toast";
 import { useAlert } from "@/components/CustomAlert";
@@ -59,8 +54,8 @@ function formatDateHeader(iso: string) {
   });
 }
 
-function groupByDate(apts: Appointment[]) {
-  const groups: Record<string, Appointment[]> = {};
+function groupByDate(apts: ApiAppointment[]) {
+  const groups: Record<string, ApiAppointment[]> = {};
   apts.forEach((a) => {
     const key = new Date(a.date).toISOString().slice(0, 10);
     if (!groups[key]) groups[key] = [];
@@ -73,7 +68,7 @@ export default function AgendaPage() {
   const { loading } = useRequireAuth();
   const { showToast } = useToast();
   const { showConfirm } = useAlert();
-  const [appointments, setAppointments] = useState<Appointment[]>([]);
+  const [appointments, setAppointments] = useState<ApiAppointment[]>([]);
   const [showAdd, setShowAdd] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [filter, setFilter] = useState<"all" | "pending" | "done">("all");
@@ -86,7 +81,14 @@ export default function AgendaPage() {
   const [location, setLocation] = useState("");
   const [notes, setNotes] = useState("");
 
-  const loadData = useCallback(() => setAppointments(getAppointments()), []);
+  const loadData = useCallback(async () => {
+    try {
+      const a = await appointmentsApi.list();
+      setAppointments(a);
+    } catch (err) {
+      console.error("Agenda load error:", err);
+    }
+  }, []);
   useEffect(() => {
     loadData();
   }, [loadData]);
@@ -117,7 +119,7 @@ export default function AgendaPage() {
     setEditingId(null);
   }
 
-  function openEdit(apt: Appointment) {
+  function openEdit(apt: ApiAppointment) {
     setEditingId(apt.id);
     setTitle(apt.title);
     const knownType = APPOINTMENT_TYPES.includes(apt.type as AppointmentType);
@@ -135,7 +137,7 @@ export default function AgendaPage() {
     setShowAdd(true);
   }
 
-  function handleSubmit(e: React.FormEvent) {
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     const finalType =
       type === "Outro" && customType.trim() ? customType.trim() : type;
@@ -143,45 +145,42 @@ export default function AgendaPage() {
       showToast("Preencha título, data e horário.", "", "warning");
       return;
     }
-
-    if (editingId) {
-      const existing = appointments.find((a) => a.id === editingId);
-      if (existing) {
-        updateAppointment({
-          ...existing,
+    const isoDate = new Date(date + "T12:00:00").toISOString();
+    try {
+      if (editingId) {
+        await appointmentsApi.update(editingId, {
           title: title.trim(),
           type: finalType,
-          date: new Date(date + "T12:00:00").toISOString(),
+          date: isoDate,
           time,
           location: location.trim() || undefined,
           notes: notes.trim() || undefined,
         });
         showToast("Compromisso atualizado!", "", "success");
+      } else {
+        await appointmentsApi.create({
+          title: title.trim(),
+          type: finalType,
+          date: isoDate,
+          time,
+          location: location.trim() || undefined,
+          notes: notes.trim() || undefined,
+        });
+        showToast("Compromisso adicionado!", "", "success");
       }
-    } else {
-      addAppointment({
-        id: generateId(),
-        weddingId: "",
-        title: title.trim(),
-        type: finalType,
-        date: new Date(date + "T12:00:00").toISOString(),
-        time,
-        location: location.trim() || undefined,
-        notes: notes.trim() || undefined,
-        completed: false,
-        createdAt: new Date().toISOString(),
-      });
-      showToast("Compromisso adicionado!", "", "success");
+      resetForm();
+      setShowAdd(false);
+      loadData();
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Erro ao salvar.";
+      showToast("Erro", msg, "danger");
     }
-
-    resetForm();
-    setShowAdd(false);
-    loadData();
   }
 
-  function toggleDone(apt: Appointment) {
-    updateAppointment({ ...apt, completed: !apt.completed });
-    loadData();
+  function toggleDone(apt: ApiAppointment) {
+    appointmentsApi
+      .update(apt.id, { completed: !apt.completed })
+      .then(() => loadData());
   }
 
   return (
@@ -532,8 +531,8 @@ export default function AgendaPage() {
                               showConfirm(
                                 "Remover compromisso?",
                                 `Deseja remover "${apt.title}"?`,
-                                () => {
-                                  deleteAppointment(apt.id);
+                                async () => {
+                                  await appointmentsApi.delete(apt.id);
                                   loadData();
                                 },
                                 "Remover",

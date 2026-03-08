@@ -14,25 +14,9 @@ import {
 } from "lucide-react";
 import AppShell from "@/components/AppShell";
 import { useRequireAuth } from "@/lib/AuthContext";
-import {
-  getWedding,
-  getBudgetItems,
-  addBudgetItem,
-  updateBudgetItem,
-  deleteBudgetItem,
-  saveWedding,
-  generateId,
-  formatCurrency,
-  getProposals,
-  updateProposal,
-  deleteVendor,
-} from "@/lib/storage";
-import type {
-  BudgetItem,
-  WeddingData,
-  VendorCategory,
-  Proposal,
-} from "@/lib/types";
+import { weddingApi, budgetApi, proposalsApi, vendorsApi } from "@/lib/api";
+import type { ApiWedding, ApiBudgetItem, ApiProposal } from "@/lib/api";
+import type { VendorCategory } from "@/lib/types";
 import { VENDOR_CATEGORIES } from "@/lib/types";
 import { useToast } from "@/components/Toast";
 import { useAlert } from "@/components/CustomAlert";
@@ -41,8 +25,9 @@ import {
   parseCurrency,
   numberToCurrencyInput,
 } from "@/lib/masks";
+import { formatCurrency } from "@/lib/storage";
 
-type Grouped = Record<string, BudgetItem[]>;
+type Grouped = Record<string, ApiBudgetItem[]>;
 
 function StatusIcon({ pct }: { pct: number }) {
   if (pct >= 100) return <TrendingDown size={14} color="var(--color-danger)" />;
@@ -67,9 +52,9 @@ export default function BudgetPage() {
   const { showToast } = useToast();
   const { showConfirm } = useAlert();
 
-  const [wedding, setWedding] = useState<WeddingData | null>(null);
-  const [items, setItems] = useState<BudgetItem[]>([]);
-  const [proposals, setProposals] = useState<Proposal[]>([]);
+  const [wedding, setWedding] = useState<ApiWedding | null>(null);
+  const [items, setItems] = useState<ApiBudgetItem[]>([]);
+  const [proposals, setProposals] = useState<ApiProposal[]>([]);
   const [showAdd, setShowAdd] = useState(false);
   const [showBudgetEdit, setShowBudgetEdit] = useState(false);
 
@@ -81,10 +66,19 @@ export default function BudgetPage() {
   const [editingPaid, setEditingPaid] = useState<string | null>(null);
   const [paidInput, setPaidInput] = useState("");
 
-  const loadData = useCallback(() => {
-    setWedding(getWedding());
-    setItems(getBudgetItems());
-    setProposals(getProposals());
+  const loadData = useCallback(async () => {
+    try {
+      const [w, b, p] = await Promise.all([
+        weddingApi.get(),
+        budgetApi.list(),
+        proposalsApi.list(),
+      ]);
+      setWedding(w);
+      setItems(b);
+      setProposals(p);
+    } catch (err) {
+      console.error("Budget load error:", err);
+    }
   }, []);
 
   useEffect(() => {
@@ -102,12 +96,13 @@ export default function BudgetPage() {
     totalBudget > 0 ? Math.min((totalSpent / totalBudget) * 100, 100) : 0;
   const color = statusColor(pct);
 
-  function handleUpdatePaid(item: BudgetItem, newPaid: number) {
+  function handleUpdatePaid(item: ApiBudgetItem, newPaid: number) {
     const clamped = Math.min(Math.max(0, newPaid), item.amount);
-    updateBudgetItem({ ...item, paidAmount: clamped });
-    setEditingPaid(null);
-    setPaidInput("");
-    loadData();
+    budgetApi.update(item.id, { paidAmount: clamped }).then(() => {
+      setEditingPaid(null);
+      setPaidInput("");
+      loadData();
+    });
   }
 
   const grouped: Grouped = {};
@@ -128,46 +123,44 @@ export default function BudgetPage() {
       );
       return;
     }
-    addBudgetItem({
-      id: generateId(),
-      weddingId: wedding?.id ?? "",
-      category: finalCat,
-      description: desc.trim(),
-      amount: parseCurrency(amount),
-      paidAmount: 0,
-      createdAt: new Date().toISOString(),
-    });
-    setDesc("");
-    setAmount("");
-    setCat(VENDOR_CATEGORIES[0]);
-    setCustomCat("");
-    setShowAdd(false);
-    loadData();
-    showToast("Gasto adicionado!", "", "success");
+    budgetApi
+      .create({
+        category: finalCat,
+        description: desc.trim(),
+        amount: parseCurrency(amount),
+        paidAmount: 0,
+      })
+      .then(() => {
+        setDesc("");
+        setAmount("");
+        setCat(VENDOR_CATEGORIES[0]);
+        setCustomCat("");
+        setShowAdd(false);
+        loadData();
+        showToast("Gasto adicionado!", "", "success");
+      });
   }
 
   // Retorna a proposta vinculada ao item, se existir
-  function linkedProposal(itemId: string): Proposal | undefined {
+  function linkedProposal(itemId: string): ApiProposal | undefined {
     return proposals.find((p) => p.budgetItemId === itemId);
   }
 
-  function handleDeleteItem(item: BudgetItem) {
+  function handleDeleteItem(item: ApiBudgetItem) {
     const linked = linkedProposal(item.id);
 
     if (linked) {
       showConfirm(
         "Remover gasto vinculado?",
         `"${item.description}" veio de uma proposta fechada com ${linked.vendorName}.\n\nRemover este gasto irá:\n• Voltar a proposta para "Negociando"\n• Remover o fornecedor correspondente`,
-        () => {
-          const updated = {
-            ...linked,
-            status: "negociando" as const,
+        async () => {
+          await proposalsApi.update(linked.id, {
+            status: "negociando",
             budgetItemId: undefined,
             vendorId: undefined,
-          };
-          updateProposal(updated);
-          if (linked.vendorId) deleteVendor(linked.vendorId);
-          deleteBudgetItem(item.id);
+          });
+          if (linked.vendorId) await vendorsApi.delete(linked.vendorId);
+          await budgetApi.delete(item.id);
           loadData();
           showToast(
             "Gasto removido",
@@ -182,8 +175,8 @@ export default function BudgetPage() {
       showConfirm(
         "Remover gasto?",
         `Deseja remover "${item.description}"?`,
-        () => {
-          deleteBudgetItem(item.id);
+        async () => {
+          await budgetApi.delete(item.id);
           loadData();
         },
         "Remover",
@@ -192,17 +185,19 @@ export default function BudgetPage() {
     }
   }
 
-  function handleSaveBudget(e: React.FormEvent) {
+  async function handleSaveBudget(e: React.FormEvent) {
     e.preventDefault();
     const v = parseCurrency(newBudget);
     if (isNaN(v) || v < 0) {
       showToast("Valor inválido", "", "warning");
       return;
     }
-    if (wedding) {
-      saveWedding({ ...wedding, totalBudget: v });
+    try {
+      await weddingApi.update({ totalBudget: v });
       loadData();
       setShowBudgetEdit(false);
+    } catch {
+      showToast("Erro ao salvar", "", "danger");
     }
   }
 

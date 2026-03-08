@@ -3,7 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { saveUser, setLoggedIn, generateId } from "@/lib/storage";
+import { authApi } from "@/lib/api";
 import { useToast } from "@/components/Toast";
 import { useAuth } from "@/lib/AuthContext";
 
@@ -61,22 +61,17 @@ export default function RegisterPage() {
     }
     setLoading(true);
     try {
-      saveUser({
-        id: generateId(),
+      const { token, user } = await authApi.register({
         name: name.trim(),
         email: email.trim().toLowerCase(),
+        password,
         partnerName: partnerName.trim() || undefined,
-        createdAt: new Date().toISOString(),
       });
-      setLoggedIn(true);
-      setAuthenticated(); // atualiza contexto imediatamente
+      setAuthenticated(user, token);
       router.replace("/setup-wedding");
-    } catch {
-      showToast(
-        "Erro",
-        "Não foi possível criar sua conta. Tente novamente.",
-        "danger",
-      );
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Erro ao criar conta.";
+      showToast("Erro", msg, "danger");
     } finally {
       setLoading(false);
     }

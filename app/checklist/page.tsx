@@ -13,13 +13,8 @@ import {
 } from "lucide-react";
 import AppShell from "@/components/AppShell";
 import { useRequireAuth } from "@/lib/AuthContext";
-import {
-  getChecklist,
-  saveChecklist,
-  getWedding,
-  generateId,
-} from "@/lib/storage";
-import type { ChecklistItem } from "@/lib/types";
+import { checklistApi, weddingApi } from "@/lib/api";
+import type { ApiChecklistItem } from "@/lib/api";
 import { DEFAULT_CHECKLIST } from "@/lib/types";
 import { useToast } from "@/components/Toast";
 
@@ -44,31 +39,36 @@ function getMonthsBefore(weddingDate: string): number {
 export default function ChecklistPage() {
   const { loading } = useRequireAuth();
   const { showToast } = useToast();
-  const [items, setItems] = useState<ChecklistItem[]>([]);
+  const [items, setItems] = useState<ApiChecklistItem[]>([]);
   const [collapsed, setCollapsed] = useState<Record<number, boolean>>({});
   const [showAddForm, setShowAddForm] = useState(false);
   const [newTitle, setNewTitle] = useState("");
   const [newPeriod, setNewPeriod] = useState<number>(1);
   const [monthsLeft, setMonthsLeft] = useState<number | null>(null);
 
-  const loadData = useCallback(() => {
-    const stored = getChecklist();
-    if (stored.length === 0) {
-      // Inicializa com o checklist padrão
-      const initial: ChecklistItem[] = DEFAULT_CHECKLIST.map((t) => ({
-        id: generateId(),
-        title: t.title,
-        monthsBefore: t.monthsBefore,
-        completed: false,
-      }));
-      saveChecklist(initial);
-      setItems(initial);
-    } else {
+  const loadData = useCallback(async () => {
+    try {
+      let stored = await checklistApi.list();
+
+      // Se está vazio, inicializa com o checklist padrão via API
+      if (stored.length === 0) {
+        const initial: ApiChecklistItem[] = DEFAULT_CHECKLIST.map((t) => ({
+          id: crypto.randomUUID(),
+          title: t.title,
+          monthsBefore: t.monthsBefore,
+          completed: false,
+          isCustom: false,
+        }));
+        stored = await checklistApi.saveAll(initial);
+      }
       setItems(stored);
-    }
-    const wedding = getWedding();
-    if (wedding?.weddingDate) {
-      setMonthsLeft(getMonthsBefore(wedding.weddingDate));
+
+      const w = await weddingApi.get();
+      if (w?.weddingDate) {
+        setMonthsLeft(getMonthsBefore(w.weddingDate));
+      }
+    } catch (err) {
+      console.error("Checklist load error:", err);
     }
   }, []);
 
@@ -85,34 +85,34 @@ export default function ChecklistPage() {
       i.id === id ? { ...i, completed: !i.completed } : i,
     );
     setItems(updated);
-    saveChecklist(updated);
+    checklistApi.saveAll(updated).catch(console.error);
   }
 
   function deleteItem(id: string) {
     const updated = items.filter((i) => i.id !== id);
     setItems(updated);
-    saveChecklist(updated);
+    checklistApi.saveAll(updated).catch(console.error);
   }
 
-  function handleAddCustom(e: React.FormEvent) {
+  async function handleAddCustom(e: React.FormEvent) {
     e.preventDefault();
     if (!newTitle.trim()) {
       showToast("Digite um título para a tarefa.", "", "warning");
       return;
     }
-    const newItem: ChecklistItem = {
-      id: generateId(),
-      title: newTitle.trim(),
-      monthsBefore: newPeriod,
-      completed: false,
-      isCustom: true,
-    };
-    const updated = [...items, newItem];
-    setItems(updated);
-    saveChecklist(updated);
-    setNewTitle("");
-    setShowAddForm(false);
-    showToast("Tarefa adicionada!", "", "success");
+    try {
+      const newItem = await checklistApi.addCustom({
+        title: newTitle.trim(),
+        monthsBefore: newPeriod,
+      });
+      setItems((prev) => [...prev, newItem]);
+      setNewTitle("");
+      setShowAddForm(false);
+      showToast("Tarefa adicionada!", "", "success");
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Erro ao adicionar.";
+      showToast("Erro", msg, "danger");
+    }
   }
 
   function toggleCollapse(period: number) {

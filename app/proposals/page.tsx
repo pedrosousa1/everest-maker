@@ -4,24 +4,14 @@ import { useState, useEffect, useCallback } from "react";
 import { FileText, Plus, X, ChevronRight, CheckCircle2 } from "lucide-react";
 import AppShell from "@/components/AppShell";
 import { useRequireAuth } from "@/lib/AuthContext";
-import {
-  getProposals,
-  addProposal,
-  deleteProposal,
-  updateProposal,
-  addBudgetItem,
-  deleteBudgetItem,
-  addVendor,
-  deleteVendor,
-  getWedding,
-  generateId,
-  formatCurrency,
-} from "@/lib/storage";
-import type { Proposal, ProposalStatus, VendorCategory } from "@/lib/types";
+import { proposalsApi, budgetApi, vendorsApi } from "@/lib/api";
+import type { ApiProposal } from "@/lib/api";
+import type { ProposalStatus, VendorCategory } from "@/lib/types";
 import { VENDOR_CATEGORIES } from "@/lib/types";
 import { useToast } from "@/components/Toast";
 import { useAlert } from "@/components/CustomAlert";
 import { maskCurrency, parseCurrency } from "@/lib/masks";
+import { formatCurrency } from "@/lib/storage";
 
 const STATUS_LABELS: Record<ProposalStatus, string> = {
   negociando: "Negociando",
@@ -39,27 +29,11 @@ const STATUS_BORDER: Record<ProposalStatus, string> = {
   recusado: "var(--color-danger)",
 };
 
-/** Cria fornecedor a partir de uma proposta fechada e retorna o id gerado */
-function createVendorFromProposal(p: Proposal): string {
-  const wedding = getWedding();
-  const vendorId = generateId();
-  addVendor({
-    id: vendorId,
-    weddingId: wedding?.id ?? "",
-    name: p.vendorName,
-    category: p.category,
-    value: p.value,
-    notes: p.notes,
-    createdAt: new Date().toISOString(),
-  });
-  return vendorId;
-}
-
 export default function ProposalsPage() {
   const { loading } = useRequireAuth();
   const { showToast } = useToast();
   const { showConfirm } = useAlert();
-  const [proposals, setProposals] = useState<Proposal[]>([]);
+  const [proposals, setProposals] = useState<ApiProposal[]>([]);
   const [showAdd, setShowAdd] = useState(false);
   const [filter, setFilter] = useState<ProposalStatus | "all">("all");
 
@@ -70,7 +44,14 @@ export default function ProposalsPage() {
   const [status, setStatus] = useState<ProposalStatus>("negociando");
   const [notes, setNotes] = useState("");
 
-  const loadData = useCallback(() => setProposals(getProposals()), []);
+  const loadData = useCallback(async () => {
+    try {
+      const p = await proposalsApi.list();
+      setProposals(p);
+    } catch (err) {
+      console.error("Proposals load error:", err);
+    }
+  }, []);
   useEffect(() => {
     loadData();
   }, [loadData]);
@@ -91,7 +72,7 @@ export default function ProposalsPage() {
     setNotes("");
   }
 
-  function handleAdd(e: React.FormEvent) {
+  async function handleAdd(e: React.FormEvent) {
     e.preventDefault();
     if (!vendorName.trim() || !value) {
       showToast(
@@ -101,103 +82,115 @@ export default function ProposalsPage() {
       );
       return;
     }
-
     const finalCat =
       cat === "Outro" && customCat.trim() ? customCat.trim() : cat;
+    const parsedValue = parseCurrency(value);
 
-    const proposal: Proposal = {
-      id: generateId(),
-      weddingId: "",
-      vendorName: vendorName.trim(),
-      category: finalCat,
-      value: parseCurrency(value),
-      status,
-      notes: notes.trim() || undefined,
-      createdAt: new Date().toISOString(),
-    };
+    try {
+      let budgetItemId: string | undefined;
+      let vendorId: string | undefined;
 
-    // Se já criando como "fechado", gera budget item + vendor
-    if (status === "fechado") {
-      const wedding = getWedding();
-      const budgetId = generateId();
-      addBudgetItem({
-        id: budgetId,
-        weddingId: wedding?.id ?? "",
-        category: cat,
-        description: vendorName.trim(),
-        amount: proposal.value,
-        paidAmount: 0,
-        createdAt: new Date().toISOString(),
+      if (status === "fechado") {
+        const bi = await budgetApi.create({
+          category: finalCat,
+          description: vendorName.trim(),
+          amount: parsedValue,
+          paidAmount: 0,
+        });
+        budgetItemId = bi.id;
+        const v = await vendorsApi.create({
+          name: vendorName.trim(),
+          category: finalCat,
+          value: parsedValue,
+          notes: notes.trim() || undefined,
+          budgetItemId: bi.id,
+        });
+        vendorId = v.id;
+      }
+
+      await proposalsApi.create({
+        vendorName: vendorName.trim(),
+        vendorId,
+        category: finalCat,
+        value: parsedValue,
+        status,
+        notes: notes.trim() || undefined,
+        budgetItemId,
       });
-      proposal.budgetItemId = budgetId;
-      proposal.vendorId = createVendorFromProposal(proposal);
+      resetForm();
+      setShowAdd(false);
+      loadData();
+      showToast(
+        status === "fechado" ? "🎉 Proposta fechada!" : "Proposta adicionada!",
+        status === "fechado" ? "Fornecedor adicionado automaticamente." : "",
+        "success",
+      );
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Erro ao adicionar.";
+      showToast("Erro", msg, "danger");
     }
-
-    addProposal(proposal);
-    resetForm();
-    setShowAdd(false);
-    loadData();
-    showToast(
-      status === "fechado" ? "🎉 Proposta fechada!" : "Proposta adicionada!",
-      status === "fechado" ? "Fornecedor adicionado automaticamente." : "",
-      "success",
-    );
   }
 
-  function handleChangeStatus(id: string, newStatus: ProposalStatus) {
+  async function handleChangeStatus(id: string, newStatus: ProposalStatus) {
     const proposal = proposals.find((p) => p.id === id);
     if (!proposal) return;
-    const updated = { ...proposal, status: newStatus };
 
-    // ──  → fechado: cria budget item + vendor
-    if (newStatus === "fechado" && proposal.status !== "fechado") {
-      const wedding = getWedding();
-      const budgetId = generateId();
-      addBudgetItem({
-        id: budgetId,
-        weddingId: wedding?.id ?? "",
-        category: updated.category,
-        description: updated.vendorName,
-        amount: updated.value,
-        paidAmount: 0,
-        createdAt: new Date().toISOString(),
-      });
-      updated.budgetItemId = budgetId;
-      updated.vendorId = createVendorFromProposal(updated);
-    }
+    try {
+      const updateData: Partial<ApiProposal> = { status: newStatus };
 
-    // ── fechado →  : remove budget item + vendor
-    if (proposal.status === "fechado" && newStatus !== "fechado") {
-      if (proposal.budgetItemId) {
-        deleteBudgetItem(proposal.budgetItemId);
-        updated.budgetItemId = undefined;
+      if (newStatus === "fechado" && proposal.status !== "fechado") {
+        const bi = await budgetApi.create({
+          category: proposal.category,
+          description: proposal.vendorName,
+          amount: proposal.value,
+          paidAmount: 0,
+        });
+        updateData.budgetItemId = bi.id;
+        const v = await vendorsApi.create({
+          name: proposal.vendorName,
+          category: proposal.category,
+          value: proposal.value,
+          notes: proposal.notes,
+          budgetItemId: bi.id,
+        });
+        updateData.vendorId = v.id;
       }
-      if (proposal.vendorId) {
-        deleteVendor(proposal.vendorId);
-        updated.vendorId = undefined;
-      }
-    }
 
-    updateProposal(updated);
-    loadData();
-    showToast(
-      newStatus === "fechado"
-        ? "🎉 Proposta fechada!"
-        : `Status: ${STATUS_LABELS[newStatus]}`,
-      newStatus === "fechado" ? "Fornecedor adicionado automaticamente." : "",
-      newStatus === "fechado" ? "success" : "info",
-    );
+      if (proposal.status === "fechado" && newStatus !== "fechado") {
+        if (proposal.budgetItemId) {
+          await budgetApi.delete(proposal.budgetItemId);
+          updateData.budgetItemId = undefined;
+        }
+        if (proposal.vendorId) {
+          await vendorsApi.delete(proposal.vendorId);
+          updateData.vendorId = undefined;
+        }
+      }
+
+      await proposalsApi.update(id, updateData);
+      loadData();
+      showToast(
+        newStatus === "fechado"
+          ? "🎉 Proposta fechada!"
+          : `Status: ${STATUS_LABELS[newStatus]}`,
+        newStatus === "fechado" ? "Fornecedor adicionado automaticamente." : "",
+        newStatus === "fechado" ? "success" : "info",
+      );
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Erro ao atualizar.";
+      showToast("Erro", msg, "danger");
+    }
   }
 
   function handleDelete(id: string) {
     showConfirm(
       "Remover proposta?",
       "Deseja remover esta proposta e seus vínculos?",
-      () => {
+      async () => {
         const p = proposals.find((x) => x.id === id);
-        if (p?.budgetItemId) deleteBudgetItem(p.budgetItemId);
-        if (p?.vendorId) deleteVendor(p.vendorId);
-        deleteProposal(id);
+        if (p?.budgetItemId) await budgetApi.delete(p.budgetItemId);
+        if (p?.vendorId) await vendorsApi.delete(p.vendorId);
+        await proposalsApi.delete(id);
         loadData();
       },
       "Remover",

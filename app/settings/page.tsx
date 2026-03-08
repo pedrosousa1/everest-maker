@@ -4,9 +4,9 @@ import { useState, useEffect } from "react";
 import { Settings, Calendar, MapPin, Wallet, Save } from "lucide-react";
 import AppShell from "@/components/AppShell";
 import { useRequireAuth } from "@/lib/AuthContext";
-import { getWedding, saveWedding, generateId } from "@/lib/storage";
+import { weddingApi } from "@/lib/api";
+import type { ApiWedding } from "@/lib/api";
 import { useToast } from "@/components/Toast";
-import type { WeddingData } from "@/lib/types";
 import {
   maskCurrency,
   parseCurrency,
@@ -56,47 +56,52 @@ export default function SettingsPage() {
   const { loading } = useRequireAuth();
   const { showToast } = useToast();
 
-  const [wedding, setWedding] = useState<WeddingData | null>(null);
+  const [wedding, setWedding] = useState<ApiWedding | null>(null);
   const [weddingDate, setWeddingDate] = useState("");
   const [venueName, setVenueName] = useState("");
   const [totalBudget, setTotalBudget] = useState("");
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    const w = getWedding();
-    if (w) {
-      setWedding(w);
-      setWeddingDate(w.weddingDate ? toDateInput(w.weddingDate) : "");
-      setVenueName(w.venueName ?? "");
-      setTotalBudget(w.totalBudget ? numberToCurrencyInput(w.totalBudget) : "");
-    }
+    weddingApi.get().then((w) => {
+      if (w) {
+        setWedding(w);
+        setWeddingDate(w.weddingDate ? toDateInput(w.weddingDate) : "");
+        setVenueName(w.venueName ?? "");
+        setTotalBudget(
+          w.totalBudget ? numberToCurrencyInput(w.totalBudget) : "",
+        );
+      }
+    });
   }, []);
 
   if (loading) return null;
 
-  function handleSave(e: React.FormEvent) {
+  async function handleSave(e: React.FormEvent) {
     e.preventDefault();
-    const iso = parseDate(weddingDate);
+    const iso = weddingDate ? parseDate(weddingDate) : null;
     if (weddingDate && !iso) {
       showToast("Data inválida", "Use o formato DD/MM/AAAA.", "warning");
       return;
     }
     setSaving(true);
     try {
-      const existing = wedding;
-      saveWedding({
-        id: existing?.id ?? generateId(),
-        coupleName: existing?.coupleName ?? "",
-        weddingDate: iso ?? existing?.weddingDate ?? new Date().toISOString(),
+      const data = {
+        weddingDate: iso ?? wedding?.weddingDate,
         venueName: venueName.trim() || undefined,
         totalBudget: parseCurrency(totalBudget),
-        createdAt: existing?.createdAt ?? new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      });
-      setWedding(getWedding());
+      };
+      let updated: ApiWedding;
+      if (wedding) {
+        updated = await weddingApi.update(data);
+      } else {
+        updated = await weddingApi.create(data);
+      }
+      setWedding(updated);
       showToast("Configurações salvas!", "", "success");
-    } catch {
-      showToast("Erro ao salvar", "Tente novamente.", "danger");
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Tente novamente.";
+      showToast("Erro ao salvar", msg, "danger");
     } finally {
       setSaving(false);
     }

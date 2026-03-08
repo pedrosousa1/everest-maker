@@ -3,7 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { getUser, setLoggedIn } from "@/lib/storage";
+import { authApi } from "@/lib/api";
 import { useToast } from "@/components/Toast";
 import { useAuth } from "@/lib/AuthContext";
 
@@ -23,24 +23,15 @@ export default function LoginPage() {
     }
     setLoading(true);
     try {
-      const user = getUser();
-      if (user && user.email === email.trim().toLowerCase()) {
-        setLoggedIn(true);
-        setAuthenticated(); // atualiza contexto imediatamente
-        router.replace("/dashboard");
-      } else {
-        showToast(
-          "Conta não encontrada",
-          "Verifique seu e-mail ou crie uma conta.",
-          "danger",
-        );
-      }
-    } catch {
-      showToast(
-        "Erro ao entrar",
-        "Não foi possível fazer login. Tente novamente.",
-        "danger",
-      );
+      const { token, user } = await authApi.login({
+        email: email.trim().toLowerCase(),
+        password,
+      });
+      setAuthenticated(user, token);
+      router.replace("/dashboard");
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Erro ao entrar.";
+      showToast("Erro ao entrar", msg, "danger");
     } finally {
       setLoading(false);
     }

@@ -1,10 +1,9 @@
 "use client";
 
 import { maskCurrency, parseCurrency } from "@/lib/masks";
-
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { saveWedding, generateId, setOnboardingDone } from "@/lib/storage";
+import { weddingApi } from "@/lib/api";
 import { useToast } from "@/components/Toast";
 import { useAuth } from "@/lib/AuthContext";
 import Onboarding from "@/components/Onboarding";
@@ -45,7 +44,7 @@ export default function SetupWeddingPage() {
   const [loading, setLoading] = useState(false);
   const [showOnboarding, setShowOnboarding] = useState(false);
   const { showToast } = useToast();
-  const { setAuthenticated } = useAuth();
+  const { user } = useAuth();
   const router = useRouter();
 
   async function handleSave(e: React.FormEvent) {
@@ -61,16 +60,23 @@ export default function SetupWeddingPage() {
     }
     setLoading(true);
     try {
-      saveWedding({
-        id: generateId(),
-        coupleName: "",
-        weddingDate: iso,
-        venueName: venueName.trim() || undefined,
-        totalBudget: parseCurrency(totalBudget),
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      });
-      setAuthenticated();
+      // Tenta criar; se já existe, atualiza
+      try {
+        await weddingApi.create({
+          coupleName: user?.partnerName
+            ? `${user.name} & ${user.partnerName}`
+            : (user?.name ?? ""),
+          weddingDate: iso,
+          venueName: venueName.trim() || undefined,
+          totalBudget: parseCurrency(totalBudget),
+        });
+      } catch {
+        await weddingApi.update({
+          weddingDate: iso,
+          venueName: venueName.trim() || undefined,
+          totalBudget: parseCurrency(totalBudget),
+        });
+      }
       setShowOnboarding(true);
     } catch {
       showToast("Erro", "Não foi possível salvar. Tente novamente.", "danger");
@@ -80,7 +86,6 @@ export default function SetupWeddingPage() {
   }
 
   function handleOnboardingFinish() {
-    setOnboardingDone();
     router.replace("/dashboard");
   }
 

@@ -7,57 +7,65 @@ import {
   useState,
   useCallback,
 } from "react";
-import {
-  isLoggedIn as checkLoggedIn,
-  logout as storageLogout,
-  getUser,
-} from "@/lib/storage";
-import type { User } from "@/lib/types";
 import { useRouter } from "next/navigation";
+import { authApi, getToken, setToken, removeToken } from "@/lib/api";
+import type { ApiUser } from "@/lib/api";
 
 interface AuthContextType {
-  user: User | null;
+  user: ApiUser | null;
   loading: boolean;
   loggedIn: boolean;
-  refresh: () => void;
+  refresh: () => Promise<void>;
   logout: () => void;
-  setAuthenticated: () => void; // chama após login/register
+  setAuthenticated: (user: ApiUser, token: string) => void;
 }
 
 const AuthContext = createContext<AuthContextType>({
   user: null,
   loading: true,
   loggedIn: false,
-  refresh: () => {},
+  refresh: async () => {},
   logout: () => {},
   setAuthenticated: () => {},
 });
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const [user, setUser] = useState<User | null>(null);
+  const [user, setUser] = useState<ApiUser | null>(null);
   const [loading, setLoading] = useState(true);
   const router = useRouter();
 
-  const refresh = useCallback(() => {
-    const logged = checkLoggedIn();
-    const u = logged ? getUser() : null;
-    setUser(u);
-    setLoading(false);
+  const refresh = useCallback(async () => {
+    const token = getToken();
+    if (!token) {
+      setUser(null);
+      setLoading(false);
+      return;
+    }
+    try {
+      const me = await authApi.me();
+      setUser(me);
+    } catch {
+      // Token inválido ou expirado
+      removeToken();
+      setUser(null);
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
   useEffect(() => {
     refresh();
   }, [refresh]);
 
-  // Chamado imediatamente após login/register para evitar redirect falso no dashboard
-  const setAuthenticated = useCallback(() => {
-    const u = getUser();
-    setUser(u);
+  // Chamado imediatamente após login/register
+  const setAuthenticated = useCallback((user: ApiUser, token: string) => {
+    setToken(token);
+    setUser(user);
     setLoading(false);
   }, []);
 
   function logout() {
-    storageLogout();
+    removeToken();
     setUser(null);
     router.push("/login");
   }

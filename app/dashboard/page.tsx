@@ -15,22 +15,15 @@ import {
   Sparkles,
 } from "lucide-react";
 import AppShell from "@/components/AppShell";
-import { useRequireAuth } from "@/lib/AuthContext";
-import {
-  getWedding,
-  getUser,
-  getBudgetItems,
-  getVendors,
-  getAppointments,
-  formatCurrency,
-} from "@/lib/storage";
+import { useRequireAuth, useAuth } from "@/lib/AuthContext";
+import { weddingApi, budgetApi, vendorsApi, appointmentsApi } from "@/lib/api";
 import type {
-  WeddingData,
-  BudgetItem,
-  Vendor,
-  Appointment,
-  User,
-} from "@/lib/types";
+  ApiWedding,
+  ApiBudgetItem,
+  ApiVendor,
+  ApiAppointment,
+} from "@/lib/api";
+import { formatCurrency } from "@/lib/storage";
 
 function toTitleCase(str: string): string {
   return str.toLowerCase().replace(/^(\p{L})/u, (c) => c.toUpperCase());
@@ -98,18 +91,27 @@ function LoadingDots() {
 
 export default function DashboardPage() {
   const { loading } = useRequireAuth();
-  const [wedding, setWedding] = useState<WeddingData | null>(null);
-  const [user, setUser] = useState<User | null>(null);
-  const [budgetItems, setBudgetItems] = useState<BudgetItem[]>([]);
-  const [vendors, setVendors] = useState<Vendor[]>([]);
-  const [appointments, setAppointments] = useState<Appointment[]>([]);
+  const { user } = useAuth();
+  const [wedding, setWedding] = useState<ApiWedding | null>(null);
+  const [budgetItems, setBudgetItems] = useState<ApiBudgetItem[]>([]);
+  const [vendors, setVendors] = useState<ApiVendor[]>([]);
+  const [appointments, setAppointments] = useState<ApiAppointment[]>([]);
 
-  const loadData = useCallback(() => {
-    setWedding(getWedding());
-    setUser(getUser());
-    setBudgetItems(getBudgetItems());
-    setVendors(getVendors());
-    setAppointments(getAppointments());
+  const loadData = useCallback(async () => {
+    try {
+      const [w, b, v, a] = await Promise.all([
+        weddingApi.get(),
+        budgetApi.list(),
+        vendorsApi.list(),
+        appointmentsApi.list(),
+      ]);
+      setWedding(w);
+      setBudgetItems(b);
+      setVendors(v);
+      setAppointments(a);
+    } catch (err) {
+      console.error("Dashboard load error:", err);
+    }
   }, []);
   useEffect(() => {
     loadData();
@@ -135,9 +137,9 @@ export default function DashboardPage() {
   const partnerFirst = user?.partnerName?.trim()
     ? toTitleCase(user.partnerName.split(" ")[0])
     : null;
-  const coupleLabel = partnerFirst
-    ? `${firstName} & ${partnerFirst}`
-    : firstName;
+  const coupleLabel =
+    wedding?.coupleName ||
+    (partnerFirst ? `${firstName} & ${partnerFirst}` : firstName);
 
   return (
     <AppShell title="Início">
@@ -368,7 +370,7 @@ export default function DashboardPage() {
                         lineHeight: 1.4,
                       }}
                     >
-                      {new Date(wedding!.weddingDate).toLocaleDateString(
+                      {new Date(wedding!.weddingDate!).toLocaleDateString(
                         "pt-BR",
                         {
                           day: "numeric",

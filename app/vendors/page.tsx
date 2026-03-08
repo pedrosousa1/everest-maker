@@ -21,24 +21,15 @@ import {
   Package,
   FileText,
   Trash2,
+  Star,
+  TrendingUp,
 } from "lucide-react";
 import Link from "next/link";
 import AppShell from "@/components/AppShell";
 import { useRequireAuth } from "@/lib/AuthContext";
-import {
-  getVendors,
-  addVendor,
-  updateVendor,
-  deleteVendor,
-  generateId,
-  formatCurrency,
-  getWedding,
-  addBudgetItem,
-  updateBudgetItem,
-  deleteBudgetItem,
-  getBudgetItems,
-} from "@/lib/storage";
-import type { Vendor, VendorCategory } from "@/lib/types";
+import { vendorsApi, budgetApi } from "@/lib/api";
+import type { ApiVendor } from "@/lib/api";
+import type { VendorCategory } from "@/lib/types";
 import { VENDOR_CATEGORIES } from "@/lib/types";
 import { useToast } from "@/components/Toast";
 import { useAlert } from "@/components/CustomAlert";
@@ -48,7 +39,9 @@ import {
   maskPhone,
   numberToCurrencyInput,
 } from "@/lib/masks";
+import { formatCurrency } from "@/lib/storage";
 
+// ── Ícones por categoria ─────────────────────────────────
 const CAT_ICONS: Record<string, React.ReactNode> = {
   Fotografia: <Camera size={18} />,
   Filmagem: <Film size={18} />,
@@ -67,6 +60,316 @@ const CAT_ICONS: Record<string, React.ReactNode> = {
   Outro: <Package size={18} />,
 };
 
+// ── Rating fields ─────────────────────────────────────────
+const RATING_FIELDS: { key: keyof RatingState; label: string; icon: string }[] =
+  [
+    { key: "ratingPrice", label: "Preço", icon: "💰" },
+    { key: "ratingTrust", label: "Confiança", icon: "🤝" },
+    { key: "ratingQuality", label: "Qualidade", icon: "⭐" },
+    { key: "ratingService", label: "Atendimento", icon: "💬" },
+  ];
+
+interface RatingState {
+  ratingPrice?: number;
+  ratingTrust?: number;
+  ratingQuality?: number;
+  ratingService?: number;
+}
+
+// ── Termômetro score ──────────────────────────────────────
+function calcScore(r: RatingState): number | null {
+  const vals = [
+    r.ratingPrice,
+    r.ratingTrust,
+    r.ratingQuality,
+    r.ratingService,
+  ].filter((v): v is number => v !== undefined && v !== null);
+  if (vals.length === 0) return null;
+  return Math.round((vals.reduce((a, b) => a + b, 0) / vals.length) * 10) / 10;
+}
+
+function scoreColor(score: number): string {
+  if (score >= 8) return "#4ade80";
+  if (score >= 6) return "#fbbf24";
+  if (score >= 4) return "#f97316";
+  return "#f87171";
+}
+
+function scoreLabel(score: number): string {
+  if (score >= 8.5) return "Excelente";
+  if (score >= 7) return "Muito bom";
+  if (score >= 5.5) return "Razoável";
+  if (score >= 4) return "Abaixo do esperado";
+  return "Insatisfatório";
+}
+
+// ── Componente de avaliação por slider ───────────────────
+function RatingSlider({
+  label,
+  icon,
+  value,
+  onChange,
+}: {
+  label: string;
+  icon: string;
+  value: number | undefined;
+  onChange: (v: number) => void;
+}) {
+  const v = value ?? 0;
+  const filled = v > 0;
+  const color = filled ? scoreColor(v) : "var(--color-gray-dark)";
+
+  return (
+    <div style={{ marginBottom: 18 }}>
+      {/* Label + valor */}
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          marginBottom: 8,
+        }}
+      >
+        <span
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 6,
+            fontSize: 13,
+            color: "var(--color-gray-light)",
+            fontWeight: 500,
+          }}
+        >
+          <span style={{ fontSize: 15 }}>{icon}</span>
+          {label}
+        </span>
+        <span
+          style={{
+            fontSize: 14,
+            fontWeight: 700,
+            color: filled ? color : "var(--color-gray-dark)",
+            minWidth: 28,
+            textAlign: "right",
+            transition: "color 0.2s",
+          }}
+        >
+          {filled ? v : "—"}
+        </span>
+      </div>
+
+      {/* Track */}
+      <div
+        style={{
+          position: "relative",
+          height: 8,
+          borderRadius: 8,
+          background: "rgba(255,255,255,0.06)",
+        }}
+      >
+        {/* Preenchido */}
+        <div
+          style={{
+            position: "absolute",
+            left: 0,
+            top: 0,
+            height: "100%",
+            width: `${v * 10}%`,
+            borderRadius: 8,
+            background: filled
+              ? `linear-gradient(90deg, ${color}88, ${color})`
+              : "transparent",
+            transition: "width 0.25s ease, background 0.25s ease",
+          }}
+        />
+
+        {/* Input range invisível por cima */}
+        <input
+          type="range"
+          min={0}
+          max={10}
+          step={1}
+          value={v}
+          onChange={(e) => onChange(Number(e.target.value))}
+          style={{
+            position: "absolute",
+            inset: 0,
+            width: "100%",
+            height: "100%",
+            opacity: 0,
+            cursor: "pointer",
+            margin: 0,
+          }}
+        />
+      </div>
+
+      {/* Pontos de referência */}
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          marginTop: 4,
+        }}
+      >
+        {[0, 2, 4, 6, 8, 10].map((n) => (
+          <span
+            key={n}
+            style={{
+              fontSize: 9,
+              color: "var(--color-gray-dark)",
+              lineHeight: 1,
+            }}
+          >
+            {n}
+          </span>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ── Termômetro de decisão ─────────────────────────────────
+function DecisionThermometer({ score }: { score: number | null }) {
+  if (score === null) {
+    return (
+      <div
+        style={{
+          padding: "14px 18px",
+          borderRadius: 12,
+          background: "rgba(255,255,255,0.03)",
+          border: "1px dashed rgba(255,255,255,0.08)",
+          textAlign: "center",
+          color: "var(--color-gray-dark)",
+          fontSize: 12,
+        }}
+      >
+        Avalie os critérios acima para ver o termômetro de decisão
+      </div>
+    );
+  }
+
+  const color = scoreColor(score);
+  const pct = (score / 10) * 100;
+
+  return (
+    <div
+      style={{
+        padding: "16px 18px",
+        borderRadius: 14,
+        background: `linear-gradient(135deg, ${color}0a, ${color}18)`,
+        border: `1px solid ${color}33`,
+        position: "relative",
+        overflow: "hidden",
+      }}
+    >
+      {/* Brilho decorativo */}
+      <div
+        style={{
+          position: "absolute",
+          top: -20,
+          right: -20,
+          width: 80,
+          height: 80,
+          borderRadius: "50%",
+          background: `radial-gradient(circle, ${color}20, transparent 70%)`,
+          pointerEvents: "none",
+        }}
+      />
+
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          marginBottom: 12,
+        }}
+      >
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <TrendingUp size={16} color={color} />
+          <span
+            style={{
+              fontSize: 12,
+              fontWeight: 600,
+              color,
+              letterSpacing: 0.5,
+              textTransform: "uppercase",
+            }}
+          >
+            Termômetro de decisão
+          </span>
+        </div>
+        <div style={{ display: "flex", alignItems: "baseline", gap: 3 }}>
+          <span style={{ fontSize: 28, fontWeight: 800, color, lineHeight: 1 }}>
+            {score}
+          </span>
+          <span style={{ fontSize: 12, color: `${color}99`, fontWeight: 600 }}>
+            /10
+          </span>
+        </div>
+      </div>
+
+      {/* Barra de progresso */}
+      <div
+        style={{
+          height: 10,
+          borderRadius: 10,
+          background: "rgba(255,255,255,0.06)",
+          marginBottom: 10,
+          overflow: "hidden",
+        }}
+      >
+        <div
+          style={{
+            height: "100%",
+            borderRadius: 10,
+            width: `${pct}%`,
+            background: `linear-gradient(90deg, ${color}80, ${color})`,
+            transition: "width 0.5s cubic-bezier(0.34, 1.56, 0.64, 1)",
+            boxShadow: `0 0 12px ${color}60`,
+          }}
+        />
+      </div>
+
+      {/* Rótulo */}
+      <p style={{ fontSize: 14, fontWeight: 700, color, margin: 0 }}>
+        {scoreLabel(score)}
+      </p>
+      <p
+        style={{
+          fontSize: 11.5,
+          color: "rgba(255,255,255,0.4)",
+          margin: "3px 0 0",
+        }}
+      >
+        Média das avaliações preenchidas
+      </p>
+    </div>
+  );
+}
+
+// ── Mini score badge (nos cards da lista) ─────────────────
+function ScoreBadge({ vendor }: { vendor: ApiVendor }) {
+  const score = calcScore(vendor);
+  if (score === null) return null;
+  const color = scoreColor(score);
+  return (
+    <div
+      style={{
+        display: "flex",
+        alignItems: "center",
+        gap: 4,
+        padding: "3px 8px",
+        borderRadius: 20,
+        background: `${color}18`,
+        border: `1px solid ${color}44`,
+      }}
+    >
+      <Star size={10} fill={color} color={color} />
+      <span style={{ fontSize: 11, fontWeight: 700, color }}>{score}</span>
+    </div>
+  );
+}
+
+// ── Form state ────────────────────────────────────────────
 const EMPTY_FORM = {
   name: "",
   cat: VENDOR_CATEGORIES[0] as VendorCategory,
@@ -77,29 +380,39 @@ const EMPTY_FORM = {
 };
 type FState = typeof EMPTY_FORM;
 
-/* ── Formulário compartilhado como componente fora do render ── */
+const EMPTY_RATING: RatingState = {
+  ratingPrice: undefined,
+  ratingTrust: undefined,
+  ratingQuality: undefined,
+  ratingService: undefined,
+};
+
+// ── Formulário básico ─────────────────────────────────────
 function VForm({
   f,
   onChange,
   onSubmit,
   onCancel,
   autoFocusName,
+  rating,
+  onRatingChange,
 }: {
   f: FState;
   onChange: (key: keyof FState, value: string) => void;
   onSubmit: (e: React.FormEvent) => void;
   onCancel: () => void;
   autoFocusName?: boolean;
+  rating: RatingState;
+  onRatingChange: (key: keyof RatingState, value: number) => void;
 }) {
+  const score = calcScore(rating);
+
   return (
     <form
       onSubmit={onSubmit}
-      style={{
-        display: "flex",
-        flexDirection: "column",
-        gap: "var(--sp-md)",
-      }}
+      style={{ display: "flex", flexDirection: "column", gap: "var(--sp-md)" }}
     >
+      {/* Nome */}
       <div className="input-group">
         <label className="input-label">Nome *</label>
         <input
@@ -108,8 +421,11 @@ function VForm({
           value={f.name}
           onChange={(e) => onChange("name", e.target.value)}
           autoFocus={autoFocusName}
+          placeholder="Ex: Estúdio Lumê Fotografia"
         />
       </div>
+
+      {/* Categoria + Valor */}
       <div
         style={{
           display: "grid",
@@ -123,10 +439,7 @@ function VForm({
             className="input-field"
             value={f.cat}
             onChange={(e) => onChange("cat", e.target.value)}
-            style={{
-              background: "var(--color-black-card)",
-              cursor: "pointer",
-            }}
+            style={{ background: "var(--color-black-card)", cursor: "pointer" }}
           >
             {VENDOR_CATEGORIES.map((c) => (
               <option key={c} value={c}>
@@ -138,7 +451,7 @@ function VForm({
             <input
               type="text"
               className="input-field"
-              placeholder="Especifique a categoria..."
+              placeholder="Especifique..."
               value={f.customCat}
               onChange={(e) => onChange("customCat", e.target.value)}
               style={{ marginTop: 8 }}
@@ -157,27 +470,111 @@ function VForm({
           />
         </div>
       </div>
-      <div className="input-group">
-        <label className="input-label">Telefone</label>
-        <input
-          type="tel"
-          className="input-field"
-          placeholder="(11) 99999-9999"
-          value={f.phone}
-          onChange={(e) => onChange("phone", maskPhone(e.target.value))}
-        />
-      </div>
-      <div className="input-group">
-        <label className="input-label">Instagram</label>
-        <input
-          type="text"
-          className="input-field"
-          placeholder="@usuario"
-          value={f.instagram}
-          onChange={(e) => onChange("instagram", e.target.value)}
-        />
+
+      {/* Contato */}
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "1fr 1fr",
+          gap: "var(--sp-md)",
+        }}
+      >
+        <div className="input-group">
+          <label className="input-label">Telefone</label>
+          <input
+            type="tel"
+            className="input-field"
+            placeholder="(11) 99999-9999"
+            value={f.phone}
+            onChange={(e) => onChange("phone", maskPhone(e.target.value))}
+          />
+        </div>
+        <div className="input-group">
+          <label className="input-label">Instagram</label>
+          <input
+            type="text"
+            className="input-field"
+            placeholder="@usuario"
+            value={f.instagram}
+            onChange={(e) => onChange("instagram", e.target.value)}
+          />
+        </div>
       </div>
 
+      {/* ════ SEÇÃO DE AVALIAÇÃO ════ */}
+      <div
+        style={{
+          marginTop: 4,
+          padding: "20px 20px 4px",
+          borderRadius: 14,
+          background: "rgba(255,255,255,0.025)",
+          border: "1px solid rgba(255,255,255,0.06)",
+        }}
+      >
+        {/* Cabeçalho */}
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 8,
+            marginBottom: 20,
+          }}
+        >
+          <div
+            style={{
+              width: 28,
+              height: 28,
+              borderRadius: 8,
+              background: "rgba(198,167,94,0.12)",
+              border: "1px solid rgba(198,167,94,0.2)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+          >
+            <Star size={13} color="var(--color-gold)" />
+          </div>
+          <div>
+            <p
+              style={{
+                fontSize: 13,
+                fontWeight: 700,
+                color: "var(--color-white)",
+                margin: 0,
+              }}
+            >
+              Avaliação do fornecedor
+            </p>
+            <p
+              style={{
+                fontSize: 11,
+                color: "var(--color-gray-dark)",
+                margin: 0,
+              }}
+            >
+              Deslize para avaliar de 0 a 10
+            </p>
+          </div>
+        </div>
+
+        {/* Sliders */}
+        {RATING_FIELDS.map((f) => (
+          <RatingSlider
+            key={f.key}
+            label={f.label}
+            icon={f.icon}
+            value={rating[f.key]}
+            onChange={(v) => onRatingChange(f.key, v)}
+          />
+        ))}
+
+        {/* Termômetro */}
+        <div style={{ marginBottom: 16 }}>
+          <DecisionThermometer score={score} />
+        </div>
+      </div>
+
+      {/* Ações */}
       <div style={{ display: "flex", gap: "var(--sp-md)", marginTop: 4 }}>
         <button type="button" className="btn-secondary" onClick={onCancel}>
           Cancelar
@@ -190,19 +587,32 @@ function VForm({
   );
 }
 
+// ═════════════════════════════════════════════════════════
+// PAGE
+// ═════════════════════════════════════════════════════════
 export default function VendorsPage() {
   const { loading } = useRequireAuth();
   const { showToast } = useToast();
   const { showConfirm } = useAlert();
 
-  const [vendors, setVendors] = useState<Vendor[]>([]);
-  const [selected, setSelected] = useState<Vendor | null>(null);
+  const [vendors, setVendors] = useState<ApiVendor[]>([]);
+  const [selected, setSelected] = useState<ApiVendor | null>(null);
   const [showAdd, setShowAdd] = useState(false);
   const [search, setSearch] = useState("");
   const [form, setForm] = useState<FState>(EMPTY_FORM);
   const [addForm, setAddForm] = useState<FState>(EMPTY_FORM);
+  const [rating, setRating] = useState<RatingState>(EMPTY_RATING);
+  const [addRating, setAddRating] = useState<RatingState>(EMPTY_RATING);
 
-  const loadData = useCallback(() => setVendors(getVendors()), []);
+  const loadData = useCallback(async () => {
+    try {
+      const v = await vendorsApi.list();
+      setVendors(v);
+    } catch (err) {
+      console.error("Vendors load error:", err);
+    }
+  }, []);
+
   useEffect(() => {
     loadData();
   }, [loadData]);
@@ -214,6 +624,17 @@ export default function VendorsPage() {
       v.category.toLowerCase().includes(search.toLowerCase()),
   );
 
+  // Média geral de todos fornecedores avaliados
+  const evaluated = vendors.filter((v) => calcScore(v) !== null);
+  const overallAvg =
+    evaluated.length > 0
+      ? Math.round(
+          (evaluated.reduce((s, v) => s + (calcScore(v) ?? 0), 0) /
+            evaluated.length) *
+            10,
+        ) / 10
+      : null;
+
   function handleFormChange(
     setState: React.Dispatch<React.SetStateAction<FState>>,
   ) {
@@ -221,7 +642,14 @@ export default function VendorsPage() {
       setState((p) => ({ ...p, [key]: value }));
   }
 
-  function openDetail(v: Vendor) {
+  function handleRatingChange(
+    setState: React.Dispatch<React.SetStateAction<RatingState>>,
+  ) {
+    return (key: keyof RatingState, value: number) =>
+      setState((p) => ({ ...p, [key]: value === 0 ? undefined : value }));
+  }
+
+  function openDetail(v: ApiVendor) {
     setSelected(v);
     const knownCat = VENDOR_CATEGORIES.includes(v.category as VendorCategory);
     setForm({
@@ -234,9 +662,15 @@ export default function VendorsPage() {
       instagram: v.instagram ?? "",
       value: v.value ? numberToCurrencyInput(v.value) : "",
     });
+    setRating({
+      ratingPrice: v.ratingPrice,
+      ratingTrust: v.ratingTrust,
+      ratingQuality: v.ratingQuality,
+      ratingService: v.ratingService,
+    });
   }
 
-  function handleUpdate(e: React.FormEvent) {
+  async function handleUpdate(e: React.FormEvent) {
     e.preventDefault();
     if (!selected || !form.name.trim()) {
       showToast("Nome obrigatório", "", "warning");
@@ -247,56 +681,51 @@ export default function VendorsPage() {
         ? form.customCat.trim()
         : form.cat;
     const parsedValue = parseCurrency(form.value) || undefined;
-    const wedding = getWedding();
 
-    const updated: Vendor = {
-      ...selected,
-      name: form.name.trim(),
-      category: finalCat,
-      phone: form.phone.trim() || undefined,
-      instagram: form.instagram.trim() || undefined,
-      value: parsedValue,
-    };
-
-    // Sincroniza com orçamento
-    if (selected.budgetItemId && parsedValue) {
-      // Tinha budget e continua com valor → atualiza
-      const budgetItems = getBudgetItems();
-      const existing = budgetItems.find((b) => b.id === selected.budgetItemId);
-      if (existing) {
-        updateBudgetItem({
-          ...existing,
-          description: updated.name,
+    try {
+      if (selected.budgetItemId && parsedValue) {
+        await budgetApi.update(selected.budgetItemId, {
+          description: form.name.trim(),
           category: finalCat,
           amount: parsedValue,
         });
+      } else if (selected.budgetItemId && !parsedValue) {
+        await budgetApi.delete(selected.budgetItemId);
       }
-    } else if (selected.budgetItemId && !parsedValue) {
-      // Tinha budget mas removeu valor → deleta budget
-      deleteBudgetItem(selected.budgetItemId);
-      updated.budgetItemId = undefined;
-    } else if (!selected.budgetItemId && parsedValue) {
-      // Não tinha budget e agora tem valor → cria budget
-      const budgetId = generateId();
-      addBudgetItem({
-        id: budgetId,
-        weddingId: wedding?.id ?? "",
-        category: finalCat,
-        description: updated.name,
-        amount: parsedValue,
-        paidAmount: 0,
-        createdAt: new Date().toISOString(),
-      });
-      updated.budgetItemId = budgetId;
-    }
 
-    updateVendor(updated);
-    setSelected(null);
-    loadData();
-    showToast("Salvo!", "", "success");
+      let budgetItemId = selected.budgetItemId;
+      if (!selected.budgetItemId && parsedValue) {
+        const bi = await budgetApi.create({
+          category: finalCat,
+          description: form.name.trim(),
+          amount: parsedValue,
+          paidAmount: 0,
+        });
+        budgetItemId = bi.id;
+      }
+
+      await vendorsApi.update(selected.id, {
+        name: form.name.trim(),
+        category: finalCat,
+        phone: form.phone.trim() || undefined,
+        instagram: form.instagram.trim() || undefined,
+        value: parsedValue,
+        budgetItemId,
+        ...rating,
+      });
+      setSelected(null);
+      loadData();
+      showToast("Fornecedor salvo!", "", "success");
+    } catch (err: unknown) {
+      showToast(
+        "Erro",
+        err instanceof Error ? err.message : "Erro ao salvar.",
+        "danger",
+      );
+    }
   }
 
-  function handleAdd(e: React.FormEvent) {
+  async function handleAdd(e: React.FormEvent) {
     e.preventDefault();
     if (!addForm.name.trim()) {
       showToast("Nome obrigatório", "", "warning");
@@ -307,43 +736,43 @@ export default function VendorsPage() {
         ? addForm.customCat.trim()
         : addForm.cat;
     const parsedValue = parseCurrency(addForm.value) || undefined;
-    const wedding = getWedding();
 
-    const vendor: Vendor = {
-      id: generateId(),
-      weddingId: wedding?.id ?? "",
-      name: addForm.name.trim(),
-      category: finalCat,
-      phone: addForm.phone.trim() || undefined,
-      instagram: addForm.instagram.trim() || undefined,
-      value: parsedValue,
-      createdAt: new Date().toISOString(),
-    };
-
-    // Se tem valor, cria item de orçamento vinculado
-    if (parsedValue) {
-      const budgetId = generateId();
-      addBudgetItem({
-        id: budgetId,
-        weddingId: wedding?.id ?? "",
+    try {
+      let budgetItemId: string | undefined;
+      if (parsedValue) {
+        const bi = await budgetApi.create({
+          category: finalCat,
+          description: addForm.name.trim(),
+          amount: parsedValue,
+          paidAmount: 0,
+        });
+        budgetItemId = bi.id;
+      }
+      await vendorsApi.create({
+        name: addForm.name.trim(),
         category: finalCat,
-        description: vendor.name,
-        amount: parsedValue,
-        paidAmount: 0,
-        createdAt: new Date().toISOString(),
+        phone: addForm.phone.trim() || undefined,
+        instagram: addForm.instagram.trim() || undefined,
+        value: parsedValue,
+        budgetItemId,
+        ...addRating,
       });
-      vendor.budgetItemId = budgetId;
+      setAddForm(EMPTY_FORM);
+      setAddRating(EMPTY_RATING);
+      setShowAdd(false);
+      loadData();
+      showToast(
+        "Fornecedor adicionado!",
+        parsedValue ? "Gasto adicionado ao orçamento." : "",
+        "success",
+      );
+    } catch (err: unknown) {
+      showToast(
+        "Erro",
+        err instanceof Error ? err.message : "Erro ao adicionar.",
+        "danger",
+      );
     }
-
-    addVendor(vendor);
-    setAddForm(EMPTY_FORM);
-    setShowAdd(false);
-    loadData();
-    showToast(
-      "Fornecedor adicionado!",
-      parsedValue ? "Gasto adicionado ao orçamento." : "",
-      "success",
-    );
   }
 
   function handleDelete(id: string, e?: React.MouseEvent) {
@@ -354,12 +783,9 @@ export default function VendorsPage() {
       vendor?.budgetItemId
         ? "O gasto vinculado no orçamento também será removido."
         : "Deseja remover este fornecedor?",
-      () => {
-        // Remove budget item vinculado
-        if (vendor?.budgetItemId) {
-          deleteBudgetItem(vendor.budgetItemId);
-        }
-        deleteVendor(id);
+      async () => {
+        if (vendor?.budgetItemId) await budgetApi.delete(vendor.budgetItemId);
+        await vendorsApi.delete(id);
         setSelected(null);
         loadData();
       },
@@ -417,12 +843,36 @@ export default function VendorsPage() {
           display: "flex",
           gap: "var(--sp-sm)",
           marginBottom: "var(--sp-xl)",
+          flexWrap: "wrap",
         }}
       >
         <span className="badge badge--gold">Total: {vendors.length}</span>
         <span className="badge badge--gray">
           Categorias: {new Set(vendors.map((v) => v.category)).size}
         </span>
+        {overallAvg !== null && (
+          <span
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 5,
+              padding: "4px 10px",
+              borderRadius: 20,
+              fontSize: 12,
+              fontWeight: 700,
+              background: `${scoreColor(overallAvg)}18`,
+              border: `1px solid ${scoreColor(overallAvg)}44`,
+              color: scoreColor(overallAvg),
+            }}
+          >
+            <Star
+              size={11}
+              fill={scoreColor(overallAvg)}
+              color={scoreColor(overallAvg)}
+            />
+            Média: {overallAvg}
+          </span>
+        )}
       </div>
 
       {/* Lista */}
@@ -500,16 +950,18 @@ export default function VendorsPage() {
                 borderRadius: "var(--r-lg)",
                 padding: "var(--sp-md)",
                 cursor: "pointer",
-                transition: "border-color 0.15s",
+                transition: "border-color 0.15s, box-shadow 0.15s",
                 color: "var(--color-white)",
               }}
-              onMouseOver={(e) =>
-                (e.currentTarget.style.borderColor = "var(--color-gold-border)")
-              }
-              onMouseOut={(e) =>
-                (e.currentTarget.style.borderColor =
-                  "var(--color-black-border)")
-              }
+              onMouseOver={(e) => {
+                e.currentTarget.style.borderColor = "var(--color-gold-border)";
+                e.currentTarget.style.boxShadow =
+                  "0 4px 20px rgba(198,167,94,0.08)";
+              }}
+              onMouseOut={(e) => {
+                e.currentTarget.style.borderColor = "var(--color-black-border)";
+                e.currentTarget.style.boxShadow = "none";
+              }}
             >
               {/* Ícone */}
               <div
@@ -538,7 +990,7 @@ export default function VendorsPage() {
                     overflow: "hidden",
                     textOverflow: "ellipsis",
                     whiteSpace: "nowrap",
-                    marginBottom: 3,
+                    marginBottom: 5,
                     color: "var(--color-white)",
                   }}
                 >
@@ -564,6 +1016,8 @@ export default function VendorsPage() {
                       {formatCurrency(v.value)}
                     </span>
                   )}
+                  {/* Score badge */}
+                  <ScoreBadge vendor={v} />
                 </div>
               </div>
 
@@ -576,7 +1030,6 @@ export default function VendorsPage() {
                   flexShrink: 0,
                 }}
               >
-                {/* mini indicadores */}
                 <div style={{ display: "flex", gap: 5 }}>
                   {v.phone && (
                     <Phone size={12} color="var(--color-gray-dark)" />
@@ -585,7 +1038,6 @@ export default function VendorsPage() {
                     <Instagram size={12} color="var(--color-gray-dark)" />
                   )}
                 </div>
-                {/* delete direto no card */}
                 <button
                   onClick={(e) => handleDelete(v.id, e)}
                   style={{
@@ -614,13 +1066,18 @@ export default function VendorsPage() {
         </div>
       )}
 
-      {/* ── MODAL DETALHE/EDIÇÃO ── */}
+      {/* ── MODAL EDIÇÃO ── */}
       {selected && (
         <div className="modal-overlay" onClick={() => setSelected(null)}>
           <div
             className="modal-box"
             onClick={(e) => e.stopPropagation()}
-            style={{ maxHeight: "90vh", overflowY: "auto" }}
+            style={{
+              maxHeight: "90vh",
+              overflowY: "auto",
+              maxWidth: 520,
+              width: "95vw",
+            }}
           >
             <div className="modal-header">
               <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
@@ -653,6 +1110,8 @@ export default function VendorsPage() {
               onChange={handleFormChange(setForm)}
               onSubmit={handleUpdate}
               onCancel={() => setSelected(null)}
+              rating={rating}
+              onRatingChange={handleRatingChange(setRating)}
             />
           </div>
         </div>
@@ -661,13 +1120,23 @@ export default function VendorsPage() {
       {/* ── MODAL ADICIONAR ── */}
       {showAdd && (
         <div className="modal-overlay" onClick={() => setShowAdd(false)}>
-          <div className="modal-box" onClick={(e) => e.stopPropagation()}>
+          <div
+            className="modal-box"
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              maxHeight: "90vh",
+              overflowY: "auto",
+              maxWidth: 520,
+              width: "95vw",
+            }}
+          >
             <div className="modal-header">
               <h2 className="modal-title">Novo fornecedor</h2>
               <button
                 className="modal-close"
                 onClick={() => {
                   setAddForm(EMPTY_FORM);
+                  setAddRating(EMPTY_RATING);
                   setShowAdd(false);
                 }}
               >
@@ -680,9 +1149,12 @@ export default function VendorsPage() {
               onSubmit={handleAdd}
               onCancel={() => {
                 setAddForm(EMPTY_FORM);
+                setAddRating(EMPTY_RATING);
                 setShowAdd(false);
               }}
               autoFocusName
+              rating={addRating}
+              onRatingChange={handleRatingChange(setAddRating)}
             />
           </div>
         </div>
