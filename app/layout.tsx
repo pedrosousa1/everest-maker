@@ -5,6 +5,10 @@ import Providers from "./providers";
 export const metadata: Metadata = {
   title: "Everest Planner — Planejamento de Casamentos",
   description: "Planejamento de casamento completo e inteligente.",
+  icons: {
+    icon: "/icon.png",
+    apple: "/icon.png",
+  },
 };
 
 export default function RootLayout({
